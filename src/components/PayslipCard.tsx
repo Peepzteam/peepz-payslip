@@ -17,14 +17,24 @@ export default function PayslipCard({ payslip, showExport = false }: Props) {
     if (!cardRef.current) return
     try {
       const html2canvas = (await import('html2canvas')).default
-      const canvas = await html2canvas(cardRef.current, {
+
+      // clone ออกมาวางนอก modal เพื่อหลีกเลี่ยง overflow:hidden
+      const clone = cardRef.current.cloneNode(true) as HTMLElement
+      clone.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:600px;background:white;z-index:-1'
+      // ลบปุ่มออกจาก clone
+      clone.querySelectorAll('button').forEach((b) => b.remove())
+      document.body.appendChild(clone)
+
+      const canvas = await html2canvas(clone, {
         scale: 2,
         useCORS: true,
         allowTaint: true,
         backgroundColor: '#ffffff',
         logging: false,
-        ignoreElements: (el) => el.tagName === 'BUTTON',
+        width: 600,
       })
+      document.body.removeChild(clone)
+
       const filename = `สลิป-${payslip.employee?.name || 'payslip'}-${formatPeriod(payslip.period_month, payslip.period_year)}.png`
       const link = document.createElement('a')
       link.download = filename
