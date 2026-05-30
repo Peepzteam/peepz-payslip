@@ -119,7 +119,7 @@ export default function EmployeeTab() {
           <div className="grid grid-cols-2 gap-4">
             <Field label="ชื่อ *" value={form.name} onChange={(v) => setForm({ ...form, name: v })} required />
             <Field label="อีเมล *" type="email" value={form.email} onChange={(v) => setForm({ ...form, email: v })} required />
-            <Field label="รหัสพนักงาน" value={form.employee_code} onChange={(v) => setForm({ ...form, employee_code: v })} />
+            <Field label="รหัสพนักงาน (ปล่อยว่างให้ระบบออกให้)" value={form.employee_code} onChange={(v) => setForm({ ...form, employee_code: v })} />
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">ประเภท</label>
               <select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })}
