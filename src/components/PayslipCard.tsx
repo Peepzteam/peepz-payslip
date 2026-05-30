@@ -1,6 +1,6 @@
 'use client'
 import { useRef } from 'react'
-import { Payslip } from '@/types'
+import { Payslip, LineItem } from '@/types'
 import { formatCurrency, formatPeriod } from '@/lib/utils'
 import { Download, Image } from 'lucide-react'
 
@@ -93,14 +93,18 @@ export default function PayslipCard({ payslip, showExport = false }: Props) {
           <div className="space-y-2">
             {isFreelance ? (
               <>
-                <Row
-                  label={`ค่าจ้าง${payslip.project_name ? ` (${payslip.project_name})` : ''}`}
-                  value={payslip.base_salary}
-                />
-                {payslip.work_days && payslip.daily_rate > 0 && (
-                  <p className="text-xs text-gray-400 pl-0">
-                    {payslip.work_days} วัน × {formatCurrency(payslip.daily_rate)}/วัน
-                  </p>
+                {payslip.line_items?.length ? (
+                  payslip.line_items.map((item: LineItem, i: number) => (
+                    <div key={i} className="flex justify-between items-center text-gray-700">
+                      <span className="text-sm">
+                        {item.description || 'งาน'}
+                        <span className="text-xs text-gray-400 ml-1">({item.quantity} {item.unit} × {formatCurrency(item.rate)})</span>
+                      </span>
+                      <span className="font-medium">{formatCurrency(item.total)}</span>
+                    </div>
+                  ))
+                ) : (
+                  <Row label={`ค่าจ้าง${payslip.project_name ? ` (${payslip.project_name})` : ''}`} value={payslip.base_salary} />
                 )}
               </>
             ) : (

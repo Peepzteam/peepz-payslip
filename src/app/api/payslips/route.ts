@@ -26,6 +26,11 @@ export async function POST(req: NextRequest) {
   const sendEmail = body.send_email === true
   delete body.send_email
 
+  // ถ้า freelance มี line_items ให้รวมเป็น base_salary
+  if (body.line_items?.length) {
+    body.base_salary = body.line_items.reduce((s: number, i: { total: number }) => s + (i.total || 0), 0)
+  }
+
   // Calculate totals
   const gross = (body.base_salary || 0) + (body.ot_amount || 0) + (body.incentive || 0) + (body.other_income || 0)
   const deduct = (body.social_security || 0) + (body.withholding_tax || 0) + (body.other_deduction || 0)

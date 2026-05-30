@@ -14,6 +14,14 @@ export interface Employee {
   created_at: string
 }
 
+export interface LineItem {
+  description: string
+  quantity: number
+  unit: string
+  rate: number
+  total: number
+}
+
 export interface Payslip {
   id: string
   employee_id: string
@@ -40,6 +48,7 @@ export interface Payslip {
   status: PayslipStatus
   acknowledged_at: string | null
   admin_note: string | null
+  line_items: LineItem[] | null
   created_at: string
   employee?: Employee
 }

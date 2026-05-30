@@ -20,10 +20,12 @@ function buildPayslipEmailHtml(payslip: Payslip): string {
   const isFreelance = emp.type === 'freelance'
 
   const incomeRows = isFreelance
-    ? `
-      <tr><td>ค่าจ้างโปรเจกต์: ${payslip.project_name || '-'}</td><td align="right">${formatCurrency(payslip.base_salary)}</td></tr>
-      ${payslip.work_days ? `<tr><td style="color:#666;font-size:13px">จำนวน ${payslip.work_days} วัน × ${formatCurrency(payslip.daily_rate)}/วัน</td><td></td></tr>` : ''}
-    `
+    ? (payslip.line_items?.length
+        ? payslip.line_items.map((item) =>
+            `<tr><td>${item.description || 'งาน'} <span style="color:#666;font-size:12px">(${item.quantity} ${item.unit} × ${formatCurrency(item.rate)})</span></td><td align="right">${formatCurrency(item.total)}</td></tr>`
+          ).join('')
+        : `<tr><td>ค่าจ้าง${payslip.project_name ? ` (${payslip.project_name})` : ''}</td><td align="right">${formatCurrency(payslip.base_salary)}</td></tr>`
+      )
     : `
       <tr><td>เงินเดือน</td><td align="right">${formatCurrency(payslip.base_salary)}</td></tr>
       ${payslip.ot_amount > 0 ? `<tr><td>ค่า OT (${payslip.ot_hours} ชม. × ${formatCurrency(payslip.ot_rate)})</td><td align="right">${formatCurrency(payslip.ot_amount)}</td></tr>` : ''}

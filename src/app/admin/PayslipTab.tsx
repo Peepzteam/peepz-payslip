@@ -1,9 +1,12 @@
 'use client'
 import { useEffect, useState, useRef } from 'react'
-import { Employee, Payslip } from '@/types'
+import { Employee, Payslip, LineItem } from '@/types'
 import { formatCurrency, formatPeriod } from '@/lib/utils'
 import { Send, Upload, Plus, Download, Pencil, Trash2, Eye, X } from 'lucide-react'
 import PayslipCard from '@/components/PayslipCard'
+
+const UNITS = ['ชม.', 'วัน', 'งาน', 'ครั้ง', 'เดือน', 'ชิ้น']
+const EMPTY_LINE: LineItem = { description: '', quantity: 1, unit: 'ชม.', rate: 0, total: 0 }
 
 const CURRENT_YEAR = new Date().getFullYear()
 const CURRENT_MONTH = new Date().getMonth() + 1
@@ -23,6 +26,7 @@ export default function PayslipTab() {
   const [viewPayslip, setViewPayslip] = useState<Payslip | null>(null)
   const [editingPayslip, setEditingPayslip] = useState<Payslip | null>(null)
   const [deleting, setDeleting] = useState<string | null>(null)
+  const [lineItems, setLineItems] = useState<LineItem[]>([{ ...EMPTY_LINE }])
 
   const [form, setForm] = useState({
     employee_id: '',
@@ -43,19 +47,25 @@ export default function PayslipTab() {
   const isFreelance = selectedEmployee?.type === 'freelance'
 
   const otAmount = (Number(form.ot_hours) || 0) * (Number(form.ot_rate) || 0)
-  const grossIncome =
-    (Number(form.base_salary) || 0) +
-    otAmount +
-    (Number(form.incentive) || 0) +
-    (Number(form.other_income) || 0)
+  const lineItemsTotal = lineItems.reduce((s, i) => s + (i.total || 0), 0)
+  const grossIncome = isFreelance
+    ? lineItemsTotal + (Number(form.other_income) || 0)
+    : (Number(form.base_salary) || 0) + otAmount + (Number(form.incentive) || 0) + (Number(form.other_income) || 0)
   const totalDeduction =
     (Number(form.social_security) || 0) +
     (Number(form.withholding_tax) || 0) +
     (Number(form.other_deduction) || 0)
   const netPay = grossIncome - totalDeduction
 
-  // รวมแล้ว = เงินเดือน - ปกส + OT (ก่อน incentive)
   const subtotalBeforeIncentive = (Number(form.base_salary) || 0) - (Number(form.social_security) || 0) + otAmount
+
+  // auto-update withholding_tax เมื่อ lineItems เปลี่ยน (freelance)
+  useEffect(() => {
+    if (!isFreelance) return
+    const tax = String(Math.round(lineItemsTotal * 0.03 * 100) / 100)
+    setForm((prev) => ({ ...prev, withholding_tax: tax }))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lineItemsTotal, isFreelance])
 
   useEffect(() => {
     fetch('/api/employees').then((r) => r.json()).then((d) => setEmployees(Array.isArray(d) ? d : []))
@@ -69,10 +79,9 @@ export default function PayslipTab() {
       ...prev,
       base_salary: selectedEmployee.base_salary?.toString() || prev.base_salary,
       social_security: isFree ? '0' : '875',
-      withholding_tax: isFree
-        ? String(Math.round((Number(prev.base_salary) || (selectedEmployee.base_salary ?? 0)) * 0.03 * 100) / 100)
-        : String(Math.round((Number(prev.incentive) || 0) * 0.03 * 100) / 100),
+      withholding_tax: isFree ? '0' : String(Math.round((Number(prev.incentive) || 0) * 0.03 * 100) / 100),
     }))
+    if (isFree) setLineItems([{ ...EMPTY_LINE }])
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.employee_id])
 
@@ -106,6 +115,7 @@ export default function PayslipTab() {
       other_deduction_note: form.other_deduction_note,
       admin_note: form.admin_note,
       send_email: form.send_email,
+      line_items: isFreelance ? lineItems.filter((i) => i.total > 0) : [],
     }
     const res = await fetch('/api/payslips', {
       method: 'POST',
@@ -138,6 +148,8 @@ export default function PayslipTab() {
   }
 
   function startEdit(p: Payslip) {
+    if (p.line_items?.length) setLineItems(p.line_items)
+    else setLineItems([{ ...EMPTY_LINE }])
     setEditingPayslip(p)
     setForm({
       employee_id: p.employee_id,
@@ -186,6 +198,7 @@ export default function PayslipTab() {
       other_deduction: Number(form.other_deduction) || 0,
       other_deduction_note: form.other_deduction_note,
       admin_note: form.admin_note,
+      line_items: isFreelance ? lineItems.filter((i) => i.total > 0) : [],
     }
     const res = await fetch(`/api/payslips/${editingPayslip.id}`, {
       method: 'PATCH',
@@ -320,19 +333,70 @@ export default function PayslipTab() {
           <div className="border-t pt-4">
             <h4 className="text-sm font-semibold text-gray-600 mb-3">รายได้</h4>
             {isFreelance ? (
-              <div className="grid grid-cols-3 gap-4">
-                <FField
-                  label="ค่าจ้าง (บาท)"
-                  value={form.base_salary}
-                  onChange={(v) => {
-                    const tax = String(Math.round(Number(v) * 0.03 * 100) / 100)
-                    setForm({ ...form, base_salary: v, withholding_tax: tax })
-                  }}
-                  type="number"
-                />
-                <FField label="ชื่อโปรเจกต์" value={form.project_name} onChange={(v) => setForm({ ...form, project_name: v })} />
-                <FField label="จำนวนวัน" value={form.work_days} onChange={(v) => setForm({ ...form, work_days: v })} type="number" />
-                <FField label="อัตรา/วัน" value={form.daily_rate} onChange={(v) => setForm({ ...form, daily_rate: v })} type="number" />
+              <div className="space-y-2">
+                {/* header */}
+                <div className="grid grid-cols-12 gap-2 text-xs font-medium text-gray-500 px-1">
+                  <div className="col-span-4">ประเภทงาน</div>
+                  <div className="col-span-2">จำนวน</div>
+                  <div className="col-span-2">หน่วย</div>
+                  <div className="col-span-2">อัตรา/หน่วย</div>
+                  <div className="col-span-1 text-right">ยอด</div>
+                  <div className="col-span-1" />
+                </div>
+                {lineItems.map((item, idx) => (
+                  <div key={idx} className="grid grid-cols-12 gap-2 items-center">
+                    <input
+                      className="col-span-4 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                      placeholder="เช่น ไลฟ์สด, งานอีเว้น"
+                      value={item.description}
+                      onChange={(e) => {
+                        const next = [...lineItems]; next[idx] = { ...next[idx], description: e.target.value }; setLineItems(next)
+                      }}
+                    />
+                    <input
+                      type="number"
+                      className="col-span-2 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                      placeholder="0"
+                      value={item.quantity || ''}
+                      onChange={(e) => {
+                        const q = Number(e.target.value) || 0
+                        const next = [...lineItems]; next[idx] = { ...next[idx], quantity: q, total: q * next[idx].rate }; setLineItems(next)
+                      }}
+                    />
+                    <select
+                      className="col-span-2 border border-gray-300 rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                      value={item.unit}
+                      onChange={(e) => {
+                        const next = [...lineItems]; next[idx] = { ...next[idx], unit: e.target.value }; setLineItems(next)
+                      }}
+                    >
+                      {UNITS.map((u) => <option key={u}>{u}</option>)}
+                    </select>
+                    <input
+                      type="number"
+                      className="col-span-2 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                      placeholder="0"
+                      value={item.rate || ''}
+                      onChange={(e) => {
+                        const r = Number(e.target.value) || 0
+                        const next = [...lineItems]; next[idx] = { ...next[idx], rate: r, total: next[idx].quantity * r }; setLineItems(next)
+                      }}
+                    />
+                    <div className="col-span-1 text-right text-sm font-medium text-indigo-700">{formatCurrency(item.total)}</div>
+                    <button type="button" onClick={() => setLineItems(lineItems.filter((_, i) => i !== idx))}
+                      className="col-span-1 text-gray-400 hover:text-red-500 flex justify-center">
+                      <X size={15} />
+                    </button>
+                  </div>
+                ))}
+                <button type="button"
+                  onClick={() => setLineItems([...lineItems, { ...EMPTY_LINE }])}
+                  className="flex items-center gap-1 text-sm text-indigo-600 hover:text-indigo-800 mt-1">
+                  <Plus size={14} /> เพิ่มรายการ
+                </button>
+                <div className="text-right text-sm font-semibold text-gray-700 border-t pt-2">
+                  รวมค่าจ้าง: <span className="text-indigo-700">{formatCurrency(lineItemsTotal)}</span>
+                </div>
               </div>
             ) : (
               <div className="grid grid-cols-3 gap-4">
