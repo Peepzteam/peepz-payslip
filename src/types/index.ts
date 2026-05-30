@@ -48,6 +48,7 @@ export interface Payslip {
   status: PayslipStatus
   acknowledged_at: string | null
   admin_note: string | null
+  transfer_date: string | null
   line_items: LineItem[] | null
   created_at: string
   employee?: Employee

@@ -77,6 +77,7 @@ function buildPayslipEmailHtml(payslip: Payslip): string {
           <div style="background:#f0fdf4; border:2px solid #86efac; border-radius:8px; padding:16px; text-align:center; margin:20px 0">
             <div style="color:#666; font-size:14px">ยอดสุทธิที่ได้รับ</div>
             <div style="font-size:28px; font-weight:bold; color:#15803d">${formatCurrency(payslip.net_pay)}</div>
+            ${payslip.transfer_date ? `<div style="margin-top:8px; color:#16a34a; font-size:13px">✅ โอนเงินแล้ว วันที่ ${new Date(payslip.transfer_date).toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })}</div>` : ''}
           </div>
 
           ${payslip.admin_note ? `<div style="background:#fffbeb; border:1px solid #fcd34d; border-radius:6px; padding:12px; margin-top:8px"><strong>หมายเหตุ:</strong> ${payslip.admin_note}</div>` : ''}
@@ -108,4 +109,61 @@ export async function sendPayslipEmail(payslip: Payslip) {
   })
 
   return result
+}
+
+export async function sendTransferConfirmationEmail(payslip: Payslip) {
+  const emp = payslip.employee!
+  const period = formatPeriod(payslip.period_month, payslip.period_year)
+  const transporter = createTransporter()
+  const dateStr = payslip.transfer_date
+    ? new Date(payslip.transfer_date).toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })
+    : new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })
+
+  await transporter.sendMail({
+    from: `"Payslip System" <${process.env.BREVO_SENDER_EMAIL}>`,
+    to: emp.email,
+    cc: process.env.ADMIN_EMAIL!,
+    subject: `✅ ยืนยันการโอนเงิน ${period} — ${emp.name}`,
+    html: `
+      <!DOCTYPE html>
+      <html>
+      <body style="font-family: 'Sarabun', Arial, sans-serif; background:#f5f5f5; margin:0; padding:20px;">
+        <div style="max-width:500px; margin:0 auto; background:white; border-radius:12px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,0.1)">
+          <div style="background:#16a34a; color:white; padding:24px 32px; text-align:center">
+            <div style="font-size:48px; margin-bottom:8px">✅</div>
+            <h1 style="margin:0; font-size:22px">โอนเงินแล้ว</h1>
+            <p style="margin:8px 0 0; opacity:0.85">${period}</p>
+          </div>
+          <div style="padding:32px; text-align:center">
+            <p style="color:#666; margin:0 0 8px">เรียน คุณ${emp.name}</p>
+            <p style="color:#374151; margin:0 0 24px">บริษัทได้ทำการโอนเงินเดือนให้แล้ว</p>
+            <div style="background:#f0fdf4; border:2px solid #86efac; border-radius:12px; padding:20px; margin:0 0 24px">
+              <div style="color:#666; font-size:14px; margin-bottom:4px">ยอดที่ได้รับ</div>
+              <div style="font-size:36px; font-weight:bold; color:#15803d">${formatCurrency(payslip.net_pay)}</div>
+              <div style="color:#16a34a; font-size:14px; margin-top:8px">วันที่โอน: ${dateStr}</div>
+            </div>
+            <table style="width:100%; border-collapse:collapse; text-align:left; font-size:14px; margin-bottom:16px">
+              <tr style="border-bottom:1px solid #e5e7eb">
+                <td style="padding:8px 0; color:#666">งวด</td>
+                <td style="padding:8px 0; font-weight:600">${period}</td>
+              </tr>
+              <tr style="border-bottom:1px solid #e5e7eb">
+                <td style="padding:8px 0; color:#666">รวมรายได้</td>
+                <td style="padding:8px 0">${formatCurrency(payslip.gross_income)}</td>
+              </tr>
+              <tr>
+                <td style="padding:8px 0; color:#666">รวมหัก</td>
+                <td style="padding:8px 0; color:#dc2626">-${formatCurrency(payslip.total_deduction)}</td>
+              </tr>
+            </table>
+            <p style="color:#9ca3af; font-size:12px; margin:0">หากมีข้อสงสัยกรุณาติดต่อ HR</p>
+          </div>
+          <div style="background:#f9fafb; padding:12px 32px; color:#9ca3af; font-size:12px; text-align:center">
+            ข้อมูลนี้เป็นความลับ กรุณาอย่าเผยแพร่ต่อ
+          </div>
+        </div>
+      </body>
+      </html>
+    `,
+  })
 }

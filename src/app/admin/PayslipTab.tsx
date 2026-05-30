@@ -2,7 +2,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { Employee, Payslip, LineItem } from '@/types'
 import { formatCurrency, formatPeriod } from '@/lib/utils'
-import { Send, Upload, Plus, Download, Pencil, Trash2, Eye, X } from 'lucide-react'
+import { Send, Upload, Plus, Download, Pencil, Trash2, Eye, X, Banknote } from 'lucide-react'
 import PayslipCard from '@/components/PayslipCard'
 
 const UNITS = ['ชม.', 'วัน', 'งาน', 'ครั้ง', 'เดือน', 'ชิ้น']
@@ -40,8 +40,10 @@ export default function PayslipTab() {
     social_security: '', withholding_tax: '',
     other_deduction: '', other_deduction_note: '',
     admin_note: '',
+    transfer_date: '',
     send_email: true,
   })
+  const [confirmingSend, setConfirmingSend] = useState<string | null>(null)
 
   const selectedEmployee = employees.find((e) => e.id === form.employee_id)
   const isFreelance = selectedEmployee?.type === 'freelance'
@@ -114,6 +116,7 @@ export default function PayslipTab() {
       other_deduction: Number(form.other_deduction) || 0,
       other_deduction_note: form.other_deduction_note,
       admin_note: form.admin_note,
+      transfer_date: form.transfer_date || null,
       send_email: form.send_email,
       line_items: isFreelance ? lineItems.filter((i) => i.total > 0) : [],
     }
@@ -137,6 +140,22 @@ export default function PayslipTab() {
       alert('ส่ง email ไม่ได้: ' + d.error)
     }
     setSending(null)
+  }
+
+  async function sendTransferConfirm(payslip: Payslip, date?: string) {
+    setConfirmingSend(payslip.id)
+    const res = await fetch(`/api/payslips/${payslip.id}/transfer-confirm`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ transfer_date: date || payslip.transfer_date || new Date().toISOString().slice(0, 10) }),
+    })
+    if (!res.ok) {
+      const d = await res.json()
+      alert('ส่งไม่ได้: ' + d.error)
+    } else {
+      setPayslips((prev) => prev.map((p) => p.id === payslip.id ? { ...p, transfer_date: date || p.transfer_date || new Date().toISOString().slice(0, 10) } : p))
+    }
+    setConfirmingSend(null)
   }
 
   async function deletePayslip(id: string) {
@@ -170,6 +189,7 @@ export default function PayslipTab() {
       other_deduction: p.other_deduction.toString(),
       other_deduction_note: p.other_deduction_note || '',
       admin_note: p.admin_note || '',
+      transfer_date: p.transfer_date || '',
       send_email: false,
     })
     setShowForm(true)
@@ -198,6 +218,7 @@ export default function PayslipTab() {
       other_deduction: Number(form.other_deduction) || 0,
       other_deduction_note: form.other_deduction_note,
       admin_note: form.admin_note,
+      transfer_date: form.transfer_date || null,
       line_items: isFreelance ? lineItems.filter((i) => i.total > 0) : [],
     }
     const res = await fetch(`/api/payslips/${editingPayslip.id}`, {
@@ -469,8 +490,9 @@ export default function PayslipTab() {
             </div>
           </div>
 
-          <div>
+          <div className="grid grid-cols-2 gap-4">
             <FField label="หมายเหตุจาก Admin" value={form.admin_note} onChange={(v) => setForm({ ...form, admin_note: v })} />
+            <FField label="วันที่โอนเงิน (ถ้าโอนแล้ว)" value={form.transfer_date} onChange={(v) => setForm({ ...form, transfer_date: v })} type="date" />
           </div>
 
           {!editingPayslip && (
@@ -532,8 +554,11 @@ export default function PayslipTab() {
                   <td className="px-4 py-3 text-gray-600">
                     {formatPeriod(p.period_month, p.period_year)}
                   </td>
-                  <td className="px-4 py-3 text-right font-semibold text-gray-800">
-                    {formatCurrency(p.net_pay)}
+                  <td className="px-4 py-3 text-right">
+                    <p className="font-semibold text-gray-800">{formatCurrency(p.net_pay)}</p>
+                    {p.transfer_date && (
+                      <p className="text-xs text-green-600">✅ โอนแล้ว {new Date(p.transfer_date).toLocaleDateString('th-TH')}</p>
+                    )}
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-center gap-1">
@@ -545,9 +570,17 @@ export default function PayslipTab() {
                         className="p-1.5 text-gray-500 hover:text-amber-600 hover:bg-amber-50 rounded">
                         <Pencil size={14} />
                       </button>
-                      <button onClick={() => resendEmail(p)} title="ส่ง Email อีกครั้ง" disabled={sending === p.id}
+                      <button onClick={() => resendEmail(p)} title="ส่งสลิป Email" disabled={sending === p.id}
                         className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded disabled:opacity-40">
                         <Send size={14} />
+                      </button>
+                      <button
+                        onClick={() => sendTransferConfirm(p)}
+                        title="ส่งยืนยันการโอนเงิน"
+                        disabled={confirmingSend === p.id}
+                        className="p-1.5 text-gray-500 hover:text-green-600 hover:bg-green-50 rounded disabled:opacity-40"
+                      >
+                        <Banknote size={14} />
                       </button>
                       <button onClick={() => deletePayslip(p.id)} title="ลบ" disabled={deleting === p.id}
                         className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded disabled:opacity-40">

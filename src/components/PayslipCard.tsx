@@ -168,6 +168,11 @@ export default function PayslipCard({ payslip, showExport = false }: Props) {
         <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-center">
           <p className="text-sm text-gray-500">ยอดสุทธิที่ได้รับ</p>
           <p className="text-3xl font-bold text-green-700 mt-1">{formatCurrency(payslip.net_pay)}</p>
+          {payslip.transfer_date && (
+            <p className="text-sm text-green-600 mt-2 font-medium">
+              ✅ โอนเงินแล้ว วันที่ {new Date(payslip.transfer_date).toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })}
+            </p>
+          )}
         </div>
 
         {/* Note */}
