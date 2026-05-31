@@ -162,11 +162,14 @@ export default function HRTab() {
       const html2canvas = (await import('html2canvas')).default
       const el = gridRef.current
       if (!el) return
-      const canvas = await html2canvas(el, { scale: 2, backgroundColor: '#f9fafb', logging: false })
+      const canvas = await html2canvas(el, { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false })
+      const url = canvas.toDataURL('image/png')
       const link = document.createElement('a')
       link.download = `HR-${MONTHS[month-1]}-${year+543}.png`
-      link.href = canvas.toDataURL('image/png')
+      link.href = url
+      document.body.appendChild(link)
       link.click()
+      document.body.removeChild(link)
     } catch (e) { alert('Export ไม่ได้: ' + String(e)) }
   }
 
