@@ -212,14 +212,23 @@ export default function PayslipTab() {
       send_email: form.send_email,
       line_items: isFreelance ? lineItems.filter((i) => i.total > 0) : [],
     }
-    try {
+    const doSave = async (overwrite = false) => {
       const res = await fetch('/api/payslips', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ ...payload, overwrite }),
       })
       if (!res.ok) {
         const d = await res.json().catch(() => ({}))
+        // duplicate key → ถามว่าจะแทนที่หรือเปล่า
+        if (d.error?.includes('duplicate key') || d.error?.includes('unique constraint')) {
+          const emp = employees.find(e => e.id === form.employee_id)
+          const name = emp?.name ?? guestName ?? 'พนักงานคนนี้'
+          const monthLabel = `เดือน ${form.period_month}/${Number(form.period_year)+543}`
+          const ok = confirm(`⚠️ มีสลิปของ ${name} ${monthLabel} อยู่แล้ว\n\nต้องการแทนที่ด้วยข้อมูลใหม่หรือไม่?`)
+          if (ok) await doSave(true)
+          return
+        }
         alert('บันทึกไม่สำเร็จ: ' + (d.error || `HTTP ${res.status}`))
         return
       }
@@ -228,6 +237,9 @@ export default function PayslipTab() {
       setIncentiveItems([])
       fetch(`/api/payslips?month=${filterMonth}&year=${filterYear}`)
         .then((r) => r.json()).then((d) => setPayslips(Array.isArray(d) ? d : []))
+    }
+    try {
+      await doSave()
     } catch (err) {
       alert('เกิดข้อผิดพลาด: ' + String(err))
     }
