@@ -23,6 +23,13 @@ interface PayslipSummary {
   employee?: { name: string }
 }
 
+interface CompanyHoliday {
+  id: string
+  date: string
+  name: string
+  year: number
+}
+
 const STATUS_OPTIONS = [
   { val: 'present',        label: 'มาทำงาน',     color: 'bg-green-100 text-green-700 border-green-200',   dot: 'bg-green-500' },
   { val: 'late',           label: 'มาสาย',        color: 'bg-yellow-100 text-yellow-700 border-yellow-200', dot: 'bg-yellow-500' },
@@ -48,6 +55,7 @@ export default function HRTab() {
   const [prevRecords, setPrevRecords] = useState<WorkRecord[]>([])
   const [payslips, setPayslips] = useState<PayslipSummary[]>([])
   const [prevPayslips, setPrevPayslips] = useState<PayslipSummary[]>([])
+  const [holidays, setHolidays] = useState<CompanyHoliday[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [edits, setEdits] = useState<Record<string, Partial<WorkRecord>>>({})
@@ -65,15 +73,16 @@ export default function HRTab() {
 
   const load = useCallback(async () => {
     setLoading(true)
-    const [empRes, recRes, prevRecRes, payRes, prevPayRes] = await Promise.all([
+    const [empRes, recRes, prevRecRes, payRes, prevPayRes, holRes] = await Promise.all([
       fetch('/api/employees'),
       fetch(`/api/work-records?month=${month}&year=${year}`),
       fetch(`/api/work-records?month=${prevMonth}&year=${prevYear}`),
       fetch(`/api/payslips?month=${month}&year=${year}`),
       fetch(`/api/payslips?month=${prevMonth}&year=${prevYear}`),
+      fetch(`/api/holidays?year=${year}`),
     ])
-    const [emps, recs, prevRecs, pays, prevPays] = await Promise.all([
-      empRes.json(), recRes.json(), prevRecRes.json(), payRes.json(), prevPayRes.json()
+    const [emps, recs, prevRecs, pays, prevPays, hols] = await Promise.all([
+      empRes.json(), recRes.json(), prevRecRes.json(), payRes.json(), prevPayRes.json(), holRes.json()
     ])
     const activeEmps: Employee[] = Array.isArray(emps) ? emps.filter((e: Employee) => e.is_active) : []
     setEmployees(activeEmps)
@@ -87,6 +96,7 @@ export default function HRTab() {
     setPrevRecords(Array.isArray(prevRecs) ? prevRecs : [])
     setPayslips(Array.isArray(pays) ? pays : [])
     setPrevPayslips(Array.isArray(prevPays) ? prevPays : [])
+    setHolidays(Array.isArray(hols) ? hols : [])
     setLoading(false)
   }, [month, year, prevMonth, prevYear])
 
@@ -291,11 +301,12 @@ export default function HRTab() {
             stats={stats} prevStats={prevStats} diff={diff}
             totalPayroll={totalPayroll} prevTotalPayroll={prevTotalPayroll}
             employees={shownEmployees} records={records} payslips={payslips}
+            holidays={holidays}
           />
         ) : (
           <AttendanceGrid
             employees={shownEmployees} days={days} year={year} month={month}
-            getRecord={getRecord} openCell={openCell}
+            getRecord={getRecord} openCell={openCell} holidays={holidays}
           />
         )}
         </div>
@@ -391,14 +402,22 @@ export default function HRTab() {
 }
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
-function DashboardView({ month, year, prevMonth, prevYear, stats, prevStats, diff, totalPayroll, prevTotalPayroll, employees, records, payslips }: {
+function DashboardView({ month, year, prevMonth, prevYear, stats, prevStats, diff, totalPayroll, prevTotalPayroll, employees, records, payslips, holidays }: {
   month: number; year: number; prevMonth: number; prevYear: number
   stats: { present: number; late: number; absent: number; leave: number; otHours: number }
   prevStats: { present: number; late: number; absent: number; leave: number; otHours: number }
   diff: (a: number, b: number) => { d: number; pct: number; up: boolean } | null
   totalPayroll: number; prevTotalPayroll: number
   employees: Employee[]; records: WorkRecord[]; payslips: PayslipSummary[]
+  holidays: CompanyHoliday[]
 }) {
+  const monthHolidays = holidays.filter(h => {
+    const d = new Date(h.date + 'T00:00:00')
+    return d.getMonth() + 1 === month && d.getFullYear() === year
+  }).sort((a, b) => a.date.localeCompare(b.date))
+  const today = new Date()
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`
+  const upcomingHolidays = holidays.filter(h => h.date >= todayStr).sort((a,b) => a.date.localeCompare(b.date)).slice(0, 3)
   const cards = [
     { label: 'วันเข้างาน (รวม)', value: stats.present, prev: prevStats.present, icon: Users, color: 'text-green-600', bg: 'bg-green-50' },
     { label: 'มาสาย', value: stats.late, prev: prevStats.late, icon: AlertCircle, color: 'text-yellow-600', bg: 'bg-yellow-50' },
@@ -456,6 +475,48 @@ function DashboardView({ month, year, prevMonth, prevYear, stats, prevStats, dif
         )}
       </div>
 
+      {/* Holidays this month */}
+      {monthHolidays.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+          <h3 className="font-semibold text-amber-800 mb-2 flex items-center gap-2 text-sm">🏖️ วันหยุดเดือน{['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'][month-1]} — {monthHolidays.length} วัน</h3>
+          <div className="flex flex-wrap gap-2">
+            {monthHolidays.map(h => {
+              const d = new Date(h.date + 'T00:00:00')
+              const dayNames = ['อา','จ','อ','พ','พฤ','ศ','ส']
+              const isToday = h.date === todayStr
+              return (
+                <div key={h.id} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border ${isToday ? 'bg-amber-400 text-white border-amber-400' : 'bg-white text-amber-700 border-amber-300'}`}>
+                  <span className="font-bold">{d.getDate()}</span>
+                  <span className="opacity-70">{dayNames[d.getDay()]}.</span>
+                  <span>{h.name}</span>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Upcoming holidays (cross-month) */}
+      {monthHolidays.length === 0 && upcomingHolidays.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+          <h3 className="font-semibold text-amber-800 mb-2 text-sm">🗓️ วันหยุดที่กำลังจะมาถึง</h3>
+          <div className="flex flex-wrap gap-2">
+            {upcomingHolidays.map(h => {
+              const d = new Date(h.date + 'T00:00:00')
+              const dayNames = ['อา','จ','อ','พ','พฤ','ศ','ส']
+              const monthNames = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.']
+              return (
+                <div key={h.id} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border bg-white text-amber-700 border-amber-300">
+                  <span className="font-bold">{d.getDate()} {monthNames[d.getMonth()]}</span>
+                  <span className="opacity-70">{dayNames[d.getDay()]}.</span>
+                  <span>{h.name}</span>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Per-employee */}
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
         <div className="px-4 py-3 border-b border-gray-100">
@@ -502,16 +563,22 @@ function DashboardView({ month, year, prevMonth, prevYear, stats, prevStats, dif
 }
 
 // ─── Attendance Grid ──────────────────────────────────────────────────────────
-function AttendanceGrid({ employees, days, year, month, getRecord, openCell }: {
+function AttendanceGrid({ employees, days, year, month, getRecord, openCell, holidays }: {
   employees: Employee[]
   days: number[]
   year: number
   month: number
   getRecord: (empId: string, day: number) => Partial<WorkRecord>
   openCell: (empId: string, day: number) => void
+  holidays: CompanyHoliday[]
 }) {
   const dateOf = (d: number) => new Date(year, month - 1, d)
   const isWeekend = (d: number) => [0, 6].includes(dateOf(d).getDay())
+  const holidayMap = new Map(
+    holidays
+      .filter(h => { const dd = new Date(h.date + 'T00:00:00'); return dd.getMonth()+1 === month && dd.getFullYear() === year })
+      .map(h => [new Date(h.date + 'T00:00:00').getDate(), h.name])
+  )
 
   function statusMeta(val: string | undefined) {
     return STATUS_OPTIONS.find(s => s.val === val)
@@ -534,12 +601,17 @@ function AttendanceGrid({ employees, days, year, month, getRecord, openCell }: {
             <th className="sticky left-0 z-10 bg-gray-50 px-4 py-3 text-left text-gray-600 font-semibold border-b border-r border-gray-200 min-w-[150px]">
               พนักงาน
             </th>
-            {days.map(d => (
-              <th key={d} className={`px-1 py-2 text-center border-b border-gray-200 min-w-[52px] ${isWeekend(d) ? 'bg-red-50' : 'bg-gray-50'}`}>
-                <div className={`font-bold ${isWeekend(d) ? 'text-red-400' : 'text-gray-700'}`}>{d}</div>
-                <div className="text-gray-400 font-normal">{DAY_NAMES[dateOf(d).getDay()]}</div>
-              </th>
-            ))}
+            {days.map(d => {
+              const isHol = holidayMap.has(d)
+              const holName = holidayMap.get(d)
+              return (
+                <th key={d} className={`px-1 py-2 text-center border-b border-gray-200 min-w-[52px] ${isWeekend(d) ? 'bg-red-50' : isHol ? 'bg-amber-50' : 'bg-gray-50'}`}>
+                  <div className={`font-bold ${isWeekend(d) ? 'text-red-400' : isHol ? 'text-amber-600' : 'text-gray-700'}`}>{d}</div>
+                  <div className={`font-normal ${isHol ? 'text-amber-500' : 'text-gray-400'}`} style={{fontSize:'9px'}}>{isHol ? '🏖️' : DAY_NAMES[dateOf(d).getDay()]}</div>
+                  {isHol && <div className="text-amber-500 leading-tight" style={{fontSize:'8px',maxWidth:'50px',wordBreak:'break-word'}}>{holName}</div>}
+                </th>
+              )
+            })}
             <th className="px-3 py-3 text-center bg-gray-50 border-b border-l border-gray-200 min-w-[90px] text-gray-600 font-semibold">สรุป</th>
           </tr>
         </thead>
@@ -560,10 +632,11 @@ function AttendanceGrid({ employees, days, year, month, getRecord, openCell }: {
                   const meta = statusMeta(rec.status)
                   const hasOt = Number(rec.ot_hours) > 0
                   const hasTime = rec.check_in || rec.check_out
+                  const isHolDay = holidayMap.has(d)
                   return (
                     <td key={d}
                       onClick={() => openCell(emp.id, d)}
-                      className={`border border-gray-100 cursor-pointer hover:bg-indigo-50 transition-colors ${isWeekend(d) ? 'bg-red-50/30' : ''}`}>
+                      className={`border border-gray-100 cursor-pointer hover:bg-indigo-50 transition-colors ${isWeekend(d) ? 'bg-red-50/30' : isHolDay ? 'bg-amber-50/40' : ''}`}>
                       <div className="px-1 py-1.5 flex flex-col items-center gap-0.5 min-h-[52px] justify-center">
                         {meta ? (
                           <span className={`px-1.5 py-0.5 rounded text-xs font-medium border ${meta.color}`}>
