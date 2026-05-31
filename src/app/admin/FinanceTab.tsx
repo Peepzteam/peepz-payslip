@@ -30,7 +30,21 @@ interface PayslipRecord {
   social_security: number
   withholding_tax: number
   transfer_date: string | null
+  guest_name: string | null
+  guest_type: string | null
   employee: { id: string; name: string; employee_code: string; type: string } | null
+}
+
+// ฟังก์ชันตรวจว่า payslip นี้เป็น freelance หรือไม่
+// เช็คทั้ง employee.type (linked employee) และ guest_type (guest mode)
+function isPayslipFreelance(p: PayslipRecord): boolean {
+  if (p.employee) return p.employee.type === 'freelance'
+  return p.guest_type === 'freelance'
+}
+
+// ชื่อพนักงานจาก payslip (รองรับทั้ง linked และ guest)
+function payslipName(p: PayslipRecord): string {
+  return p.employee?.name ?? p.guest_name ?? '—'
 }
 
 const INCOME_SOURCES = [
@@ -422,7 +436,7 @@ export default function FinanceTab() {
                     // Payroll row (read-only)
                     if (row.kind === 'payroll') {
                       const p = row.rec as PayslipRecord
-                      const isFreelance = p.employee?.type === 'freelance'
+                      const isFreelance = isPayslipFreelance(p)
                       const dateStr = p.transfer_date
                       const borderColor = isFreelance ? 'border-l-amber-400' : 'border-l-indigo-400'
                       const hoverBg = isFreelance ? 'hover:bg-amber-50/30' : 'hover:bg-indigo-50/20'
@@ -546,8 +560,8 @@ export default function FinanceTab() {
                 </tbody>
                 <tfoot className="border-t-2 border-gray-200">
                   {payslips.length > 0 && (() => {
-                    const ftSlips = payslips.filter(p => p.employee?.type !== 'freelance')
-                    const flSlips = payslips.filter(p => p.employee?.type === 'freelance')
+                    const ftSlips = payslips.filter(p => !isPayslipFreelance(p))
+                    const flSlips = payslips.filter(p => isPayslipFreelance(p))
                     const ftTotal = ftSlips.reduce((s, p) => s + Number(p.net_pay), 0)
                     const flTotal = flSlips.reduce((s, p) => s + Number(p.net_pay), 0)
                     return (
@@ -678,10 +692,10 @@ function YearView({ data, year, yearTotal, allIncomes, allExpenses, allPayslips,
 }) {
   // Payroll by month — split by type
   const fulltimeByMonth = Array.from({ length: 12 }, (_, i) =>
-    allPayslips.filter(p => p.period_month === i+1 && p.employee?.type !== 'freelance').reduce((s, p) => s + Number(p.net_pay), 0)
+    allPayslips.filter(p => p.period_month === i+1 && !isPayslipFreelance(p)).reduce((s, p) => s + Number(p.net_pay), 0)
   )
   const freelanceByMonth = Array.from({ length: 12 }, (_, i) =>
-    allPayslips.filter(p => p.period_month === i+1 && p.employee?.type === 'freelance').reduce((s, p) => s + Number(p.net_pay), 0)
+    allPayslips.filter(p => p.period_month === i+1 && isPayslipFreelance(p)).reduce((s, p) => s + Number(p.net_pay), 0)
   )
   const totalFtYear = fulltimeByMonth.reduce((s, v) => s + v, 0)
   const totalFlYear = freelanceByMonth.reduce((s, v) => s + v, 0)
