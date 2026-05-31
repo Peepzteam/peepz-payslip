@@ -18,6 +18,21 @@ interface ExpenseRecord {
   created_at: string
 }
 
+interface PayslipRecord {
+  id: string
+  period_month: number
+  period_year: number
+  net_pay: number
+  base_salary: number
+  ot_amount: number
+  incentive: number
+  other_income: number
+  social_security: number
+  withholding_tax: number
+  transfer_date: string | null
+  employee: { id: string; name: string; employee_code: string; type: string } | null
+}
+
 const INCOME_SOURCES = [
   { val: 'live',    label: '📺 Live',     color: 'bg-orange-100 text-orange-700 border-orange-200' },
   { val: 'event',   label: '🎪 Event',    color: 'bg-pink-100 text-pink-700 border-pink-200' },
@@ -63,6 +78,8 @@ export default function FinanceTab() {
   const [expenses, setExpenses] = useState<ExpenseRecord[]>([])
   const [allIncomes, setAllIncomes] = useState<IncomeRecord[]>([])
   const [allExpenses, setAllExpenses] = useState<ExpenseRecord[]>([])
+  const [payslips, setPayslips] = useState<PayslipRecord[]>([])
+  const [allPayslips, setAllPayslips] = useState<PayslipRecord[]>([])
   const [loading, setLoading] = useState(true)
 
   const [showForm, setShowForm] = useState<'income' | 'expense' | null>(null)
@@ -77,24 +94,32 @@ export default function FinanceTab() {
 
   const load = useCallback(async () => {
     setLoading(true)
-    const [incRes, expRes, allIncRes, allExpRes] = await Promise.all([
+    const [incRes, expRes, allIncRes, allExpRes, payRes, allPayRes] = await Promise.all([
       fetch(`/api/income-records?month=${month}&year=${year}`),
       fetch(`/api/expense-records?month=${month}&year=${year}`),
       fetch(`/api/income-records?year=${year}`),
       fetch(`/api/expense-records?year=${year}`),
+      fetch(`/api/payslips?month=${month}&year=${year}`),
+      fetch(`/api/payslips?year=${year}`),
     ])
-    const [inc, exp, allInc, allExp] = await Promise.all([incRes.json(), expRes.json(), allIncRes.json(), allExpRes.json()])
+    const [inc, exp, allInc, allExp, pays, allPays] = await Promise.all([
+      incRes.json(), expRes.json(), allIncRes.json(), allExpRes.json(), payRes.json(), allPayRes.json()
+    ])
     setIncomes(Array.isArray(inc) ? inc : [])
     setExpenses(Array.isArray(exp) ? exp : [])
     setAllIncomes(Array.isArray(allInc) ? allInc : [])
     setAllExpenses(Array.isArray(allExp) ? allExp : [])
+    setPayslips(Array.isArray(pays) ? pays : [])
+    setAllPayslips(Array.isArray(allPays) ? allPays : [])
     setLoading(false)
   }, [month, year])
 
   useEffect(() => { load() }, [load])
 
   const totalIncome = incomes.reduce((s, r) => s + Number(r.amount), 0)
-  const totalExpense = expenses.reduce((s, r) => s + Number(r.amount), 0)
+  const totalExpenseManual = expenses.reduce((s, r) => s + Number(r.amount), 0)
+  const totalPayroll = payslips.reduce((s, p) => s + Number(p.net_pay), 0)
+  const totalExpense = totalExpenseManual + totalPayroll
   const netProfit = totalIncome - totalExpense
 
   async function addIncome() {
@@ -180,26 +205,35 @@ export default function FinanceTab() {
   type LedgerRow =
     | { kind: 'income'; rec: IncomeRecord; sortKey: string }
     | { kind: 'expense'; rec: ExpenseRecord; sortKey: string }
+    | { kind: 'payroll'; rec: PayslipRecord; sortKey: string }
 
   const ledger: LedgerRow[] = [
     ...incomes.map(r => ({ kind: 'income' as const, rec: r, sortKey: (r.transaction_date ?? r.created_at) + r.id })),
     ...expenses.map(r => ({ kind: 'expense' as const, rec: r, sortKey: (r.transaction_date ?? r.created_at) + r.id })),
+    ...payslips.map(p => ({
+      kind: 'payroll' as const, rec: p,
+      sortKey: (p.transfer_date ?? `${p.period_year}-${String(p.period_month).padStart(2,'0')}-28`) + p.id
+    })),
   ].sort((a, b) => a.sortKey.localeCompare(b.sortKey))
 
   // Running balance
   let running = 0
   const ledgerWithBalance = ledger.map(row => {
     if (row.kind === 'income') running += Number(row.rec.amount)
-    else running -= Number(row.rec.amount)
+    else if (row.kind === 'expense') running -= Number((row.rec as ExpenseRecord).amount)
+    else running -= Number((row.rec as PayslipRecord).net_pay)
     return { ...row, balance: running }
   })
 
   const yearlyData = Array.from({ length: 12 }, (_, i) => {
     const m = i + 1
+    const manualExp = allExpenses.filter(r => r.month === m).reduce((s, r) => s + Number(r.amount), 0)
+    const payrollExp = allPayslips.filter(p => p.period_month === m).reduce((s, p) => s + Number(p.net_pay), 0)
     return {
       month: m,
       inc: allIncomes.filter(r => r.month === m).reduce((s, r) => s + Number(r.amount), 0),
-      exp: allExpenses.filter(r => r.month === m).reduce((s, r) => s + Number(r.amount), 0),
+      exp: manualExp + payrollExp,
+      payroll: payrollExp,
       net: 0,
     }
   }).map(d => ({ ...d, net: d.inc - d.exp }))
@@ -250,7 +284,7 @@ export default function FinanceTab() {
         <p className="text-center text-orange-300 py-8">กำลังโหลด...</p>
       ) : view === 'year' ? (
         <YearView data={yearlyData} year={year} yearTotal={yearTotal}
-          allIncomes={allIncomes} allExpenses={allExpenses}
+          allIncomes={allIncomes} allExpenses={allExpenses} allPayslips={allPayslips}
           setYear={setYear} onClickMonth={(m) => { setMonth(m); setView('month') }} />
       ) : (
         <>
@@ -273,7 +307,7 @@ export default function FinanceTab() {
               <div>
                 <p className="text-xs text-gray-500">รายจ่ายเดือนนี้</p>
                 <p className="text-xl font-bold text-rose-600">{formatCurrency(totalExpense)}</p>
-                <p className="text-xs text-gray-400">{expenses.length} รายการ</p>
+                <p className="text-xs text-gray-400">{expenses.length + payslips.length} รายการ {payslips.length > 0 && <span className="text-indigo-400">(สลิป {payslips.length})</span>}</p>
               </div>
             </div>
             <div className={`bg-white rounded-xl p-4 flex items-center gap-3 border ${netProfit >= 0 ? 'border-indigo-200' : 'border-gray-200'}`}>
@@ -359,6 +393,46 @@ export default function FinanceTab() {
                         </tr>
                       )
                     }
+                    // Payroll row (read-only)
+                    if (row.kind === 'payroll') {
+                      const p = row.rec as PayslipRecord
+                      const dateStr = p.transfer_date
+                      return (
+                        <tr key={p.id} className="border-l-2 border-l-indigo-300 hover:bg-indigo-50/20 group transition">
+                          <td className="px-4 py-2.5 text-center text-gray-400 text-xs">{idx + 1}</td>
+                          <td className="px-4 py-2.5 text-gray-500 text-xs whitespace-nowrap">
+                            {dateStr ? formatDateShort(dateStr) : <span className="text-gray-300">—</span>}
+                          </td>
+                          <td className="px-4 py-2.5">
+                            <p className="font-medium text-gray-800 leading-tight">{p.employee?.name ?? '—'}</p>
+                            <p className="text-xs text-gray-400">
+                              เงินเดือน {formatCurrency(p.base_salary)}
+                              {p.ot_amount > 0 && ` + OT ${formatCurrency(p.ot_amount)}`}
+                              {p.incentive > 0 && ` + Incentive ${formatCurrency(p.incentive)}`}
+                              {p.social_security > 0 && ` − ประกันสังคม ${formatCurrency(p.social_security)}`}
+                              {p.withholding_tax > 0 && ` − ภาษี ${formatCurrency(p.withholding_tax)}`}
+                            </p>
+                          </td>
+                          <td className="px-4 py-2.5">
+                            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600">
+                              👥 {p.employee?.type === 'freelance' ? 'Freelance' : 'เงินเดือน'}
+                            </span>
+                            <span className="ml-1 text-xs text-gray-300">(สลิป)</span>
+                          </td>
+                          <td className="px-4 py-2.5 text-right"></td>
+                          <td className="px-4 py-2.5 text-right font-semibold text-indigo-600 whitespace-nowrap">
+                            {formatCurrency(Number(p.net_pay))}
+                          </td>
+                          <td className={`px-4 py-2.5 text-right font-bold whitespace-nowrap ${row.balance >= 0 ? 'text-indigo-600' : 'text-red-500'}`}>
+                            {formatCurrency(row.balance)}
+                          </td>
+                          <td className="px-2 py-2.5 text-center">
+                            <span className="text-xs text-gray-300 opacity-0 group-hover:opacity-100">จากสลิป</span>
+                          </td>
+                        </tr>
+                      )
+                    }
+
                     const isIncome = row.kind === 'income'
                     const irec = isIncome ? (row.rec as IncomeRecord) : null
                     const erec = !isIncome ? (row.rec as ExpenseRecord) : null
@@ -420,6 +494,14 @@ export default function FinanceTab() {
                   })}
                 </tbody>
                 <tfoot className="border-t-2 border-gray-200">
+                  {payslips.length > 0 && (
+                    <tr className="bg-indigo-50/50 text-xs text-indigo-600">
+                      <td colSpan={4} className="px-4 py-2 font-medium">👥 เงินเดือนพนักงาน (จากสลิป {payslips.length} คน)</td>
+                      <td></td>
+                      <td className="px-4 py-2 text-right font-semibold">{formatCurrency(totalPayroll)}</td>
+                      <td colSpan={2}></td>
+                    </tr>
+                  )}
                   <tr className="bg-gray-50 font-semibold text-sm">
                     <td colSpan={4} className="px-4 py-3 text-gray-600">รวมทั้งหมด</td>
                     <td className="px-4 py-3 text-right text-emerald-600">{formatCurrency(totalIncome)}</td>
@@ -515,15 +597,21 @@ function ExpenseFormFields({ form, setForm }: {
 }
 
 // ─── Yearly P&L View ─────────────────────────────────────────────────────────
-function YearView({ data, year, yearTotal, allIncomes, allExpenses, setYear, onClickMonth }: {
-  data: { month: number; inc: number; exp: number; net: number }[]
+function YearView({ data, year, yearTotal, allIncomes, allExpenses, allPayslips, setYear, onClickMonth }: {
+  data: { month: number; inc: number; exp: number; payroll: number; net: number }[]
   year: number
   yearTotal: { inc: number; exp: number }
   allIncomes: IncomeRecord[]
   allExpenses: ExpenseRecord[]
+  allPayslips: PayslipRecord[]
   setYear: (y: number) => void
   onClickMonth: (m: number) => void
 }) {
+  // Payroll by month
+  const payrollByMonth = Array.from({ length: 12 }, (_, i) =>
+    allPayslips.filter(p => p.period_month === i+1).reduce((s, p) => s + Number(p.net_pay), 0)
+  )
+  const totalPayrollYear = payrollByMonth.reduce((s, v) => s + v, 0)
   // Income by source × month
   const incBySource = INCOME_SOURCES.map(src => ({
     ...src,
@@ -628,6 +716,20 @@ function YearView({ data, year, yearTotal, allIncomes, allExpenses, setYear, onC
                 <td className="px-4 py-2.5 text-right font-bold text-rose-600">{formatCurrency(cat.total)}</td>
               </tr>
             ))}
+            {/* Payroll auto row */}
+            {totalPayrollYear > 0 && (
+              <tr className="hover:bg-indigo-50/30 border-b border-gray-50">
+                <td className="sticky left-0 bg-white px-4 py-2.5 border-r border-gray-100">
+                  <span className="font-medium text-indigo-600">👥 เงินเดือน (สลิป)</span>
+                  <span className="text-xs text-gray-400 ml-1">auto</span>
+                </td>
+                {payrollByMonth.map((v, i) => (
+                  <td key={i} className={`px-3 py-2.5 text-right ${v > 0 ? 'text-indigo-600 font-medium' : 'text-gray-300'}`}>{fmt(v)}</td>
+                ))}
+                <td className="px-4 py-2.5 text-right font-bold text-indigo-600">{formatCurrency(totalPayrollYear)}</td>
+              </tr>
+            )}
+
             {/* Expense total row */}
             <tr className="bg-rose-50 border-y border-rose-200 font-bold">
               <td className="sticky left-0 bg-rose-50 px-4 py-2.5 text-rose-700 border-r border-rose-200">รวมรายจ่าย</td>
