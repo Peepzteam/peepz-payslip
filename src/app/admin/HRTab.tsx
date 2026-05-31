@@ -420,6 +420,37 @@ export default function HRTab() {
         body: JSON.stringify({ ...leaveForm, days, year: leaveYear }),
       })
       if (!res.ok) { const e = await res.json().catch(() => ({})); alert('บันทึกไม่สำเร็จ: ' + (e.error || res.status)); return }
+
+      // Sync → อัปเดตบันทึกการทำงานอัตโนมัติ
+      const leaveStatusMap: Record<string, string> = {
+        sick: 'leave_sick', vacation: 'leave_annual', personal: 'leave_personal', other: 'leave_sick',
+      }
+      const workStatus = leaveStatusMap[leaveForm.leave_type] || 'leave_sick'
+      // สร้าง list วันทำงาน (ไม่รวมเสาร์-อาทิตย์) ในช่วงที่ลา
+      const syncRecords: { employee_id: string; date: string; status: string; check_in: null; check_out: null; ot_hours: number; ot_type: string; note: string | null }[] = []
+      const cur = new Date(leaveForm.start_date + 'T00:00:00')
+      const end = new Date(leaveForm.end_date + 'T00:00:00')
+      while (cur <= end) {
+        const dow = cur.getDay()
+        if (dow !== 0 && dow !== 6) {
+          syncRecords.push({
+            employee_id: leaveForm.employee_id,
+            date: cur.toISOString().slice(0, 10),
+            status: workStatus,
+            check_in: null, check_out: null,
+            ot_hours: 0, ot_type: 'normal',
+            note: LEAVE_TYPES.find(t => t.val === leaveForm.leave_type)?.label ?? null,
+          })
+        }
+        cur.setDate(cur.getDate() + 1)
+      }
+      if (syncRecords.length > 0) {
+        await fetch('/api/work-records/bulk', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(syncRecords),
+        })
+      }
+
       setLeaveForm({ ...EMPTY_LEAVE })
       await load()
     } catch { alert('เกิดข้อผิดพลาด ไม่สามารถบันทึกการลาได้') } finally { setLeaveSaving(false) }

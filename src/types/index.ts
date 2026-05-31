@@ -41,6 +41,11 @@ export interface LineItem {
   total: number
 }
 
+export interface IncentiveItem {
+  description: string   // ชื่องาน/แหล่งที่มา
+  amount: number        // ยอดเงิน
+}
+
 export interface OtItem {
   date: string        // YYYY-MM-DD
   start_time: string  // HH:MM
@@ -83,6 +88,7 @@ export interface Payslip {
   transfer_date: string | null
   line_items: LineItem[] | null
   ot_items: OtItem[] | null
+  incentive_items: IncentiveItem[] | null
   created_at: string
   employee?: Employee
 }

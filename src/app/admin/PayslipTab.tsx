@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useState, useRef } from 'react'
-import { Employee, Payslip, LineItem, OtItem } from '@/types'
+import { Employee, Payslip, LineItem, OtItem, IncentiveItem } from '@/types'
 import { formatCurrency, formatPeriod } from '@/lib/utils'
 import { Send, Upload, Plus, Download, Pencil, Trash2, Eye, X, Banknote } from 'lucide-react'
 import { calculateTax, calcSocialSecurity } from '@/lib/tax'
@@ -9,6 +9,7 @@ import PayslipCard from '@/components/PayslipCard'
 const UNITS = ['ชม.', 'วัน', 'งาน', 'ครั้ง', 'เดือน', 'ชิ้น']
 const EMPTY_LINE: LineItem = { description: '', quantity: 1, unit: 'ชม.', rate: 0, total: 0 }
 const EMPTY_OT: OtItem = { date: '', start_time: '', end_time: '', hours: 0, type: 'normal', rate: 0, amount: 0 }
+const EMPTY_INCENTIVE: IncentiveItem = { description: '', amount: 0 }
 
 const CURRENT_YEAR = new Date().getFullYear()
 const CURRENT_MONTH = new Date().getMonth() + 1
@@ -38,6 +39,7 @@ export default function PayslipTab() {
   const [deleting, setDeleting] = useState<string | null>(null)
   const [lineItems, setLineItems] = useState<LineItem[]>([{ ...EMPTY_LINE }])
   const [otItems, setOtItems] = useState<OtItem[]>([])
+  const [incentiveItems, setIncentiveItems] = useState<IncentiveItem[]>([])
 
   const [guestMode, setGuestMode] = useState(false)
   const [guestName, setGuestName] = useState('')
@@ -77,9 +79,10 @@ export default function PayslipTab() {
   const otAmount = otItemsWithRate.reduce((s, i) => s + i.amount, 0)
 
   const lineItemsTotal = lineItems.reduce((s, i) => s + (i.total || 0), 0)
+  const incentiveTotal = incentiveItems.reduce((s, i) => s + (Number(i.amount) || 0), 0)
   const grossIncome = isFreelance
     ? lineItemsTotal + (Number(form.other_income) || 0)
-    : (Number(form.base_salary) || 0) + otAmount + (Number(form.incentive) || 0) + (Number(form.other_income) || 0)
+    : (Number(form.base_salary) || 0) + otAmount + incentiveTotal + (Number(form.other_income) || 0)
   const totalDeduction =
     (Number(form.social_security) || 0) +
     (Number(form.withholding_tax) || 0) +
@@ -92,7 +95,7 @@ export default function PayslipTab() {
     ? calculateTax(
         Number(form.base_salary) || 0,
         otAmount,
-        Number(form.incentive) || 0,
+        incentiveTotal,
         Number(form.social_security) || 0,
       )
     : null
@@ -159,6 +162,16 @@ export default function PayslipTab() {
     setOtItems((prev) => prev.filter((_, i) => i !== idx))
   }
 
+  function addIncentiveRow() {
+    setIncentiveItems((prev) => [...prev, { ...EMPTY_INCENTIVE }])
+  }
+  function updateIncentiveItem(idx: number, patch: Partial<IncentiveItem>) {
+    setIncentiveItems((prev) => prev.map((item, i) => i === idx ? { ...item, ...patch } : item))
+  }
+  function removeIncentiveRow(idx: number) {
+    setIncentiveItems((prev) => prev.filter((_, i) => i !== idx))
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     const finalOtItems = otItemsWithRate
@@ -174,8 +187,9 @@ export default function PayslipTab() {
       ot_rate: finalOtItems.length === 1 ? finalOtItems[0].rate : normalOtRate,
       ot_amount: otAmount,
       ot_items: finalOtItems,
-      incentive: Number(form.incentive) || 0,
-      incentive_note: form.incentive_note,
+      incentive: incentiveTotal,
+      incentive_note: incentiveItems.map(i => i.description).filter(Boolean).join(', '),
+      incentive_items: incentiveItems.filter(i => i.amount > 0),
       other_income: Number(form.other_income) || 0,
       other_income_note: form.other_income_note,
       project_name: form.project_name,
@@ -198,6 +212,7 @@ export default function PayslipTab() {
     if (res.ok) {
       setShowForm(false)
       setOtItems([])
+      setIncentiveItems([])
       fetch(`/api/payslips?month=${filterMonth}&year=${filterYear}`)
         .then((r) => r.json()).then((d) => setPayslips(Array.isArray(d) ? d : []))
     }
@@ -248,6 +263,14 @@ export default function PayslipTab() {
     } else {
       setOtItems([])
     }
+    // Load incentive_items or convert legacy single incentive
+    if (p.incentive_items?.length) {
+      setIncentiveItems(p.incentive_items)
+    } else if (p.incentive > 0) {
+      setIncentiveItems([{ description: p.incentive_note || 'Incentive', amount: p.incentive }])
+    } else {
+      setIncentiveItems([])
+    }
     setEditingPayslip(p)
     setForm({
       employee_id: p.employee_id ?? '',
@@ -285,8 +308,9 @@ export default function PayslipTab() {
       ot_rate: finalOtItems.length === 1 ? finalOtItems[0].rate : normalOtRate,
       ot_amount: otAmount,
       ot_items: finalOtItems,
-      incentive: Number(form.incentive) || 0,
-      incentive_note: form.incentive_note,
+      incentive: incentiveTotal,
+      incentive_note: incentiveItems.map(i => i.description).filter(Boolean).join(', '),
+      incentive_items: incentiveItems.filter(i => i.amount > 0),
       other_income: Number(form.other_income) || 0,
       other_income_note: form.other_income_note,
       project_name: form.project_name,
@@ -648,17 +672,56 @@ export default function PayslipTab() {
                   </button>
                 </div>
 
-                <FField
-                  label="Incentive (บาท)"
-                  value={form.incentive}
-                  onChange={(v) => {
-                    const tax = String(Math.round(Number(v) * 0.03 * 100) / 100)
-                    setForm({ ...form, incentive: v, withholding_tax: tax })
-                  }}
-                  type="number"
-                />
-                <div className="col-span-2">
-                  <FField label="หมายเหตุ Incentive" value={form.incentive_note} onChange={(v) => setForm({ ...form, incentive_note: v })} />
+                {/* Incentive Items */}
+                <div className="col-span-3">
+                  <div className="rounded-lg border border-purple-200 overflow-hidden">
+                    <div className="bg-purple-50 px-3 py-2 flex items-center justify-between">
+                      <span className="text-xs font-semibold text-purple-700">🏆 Incentive</span>
+                      {incentiveTotal > 0 && (
+                        <span className="text-xs font-bold text-purple-700">รวม {formatCurrency(incentiveTotal)}</span>
+                      )}
+                    </div>
+                    {incentiveItems.length > 0 && (
+                      <div>
+                        <div className="grid grid-cols-12 gap-1 px-3 py-1.5 bg-gray-50 border-t border-gray-100 text-xs text-gray-400 font-medium">
+                          <div className="col-span-8">ชื่องาน / ที่มา</div>
+                          <div className="col-span-3 text-right">ยอดเงิน (บาท)</div>
+                          <div className="col-span-1" />
+                        </div>
+                        {incentiveItems.map((item, idx) => (
+                          <div key={idx} className="grid grid-cols-12 gap-1 items-center px-3 py-2 border-t border-gray-100 hover:bg-gray-50">
+                            <input
+                              type="text"
+                              value={item.description}
+                              onChange={(e) => updateIncentiveItem(idx, { description: e.target.value })}
+                              placeholder="เช่น ยอดขาย Live, คอมมิชชั่น..."
+                              className="col-span-8 border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-purple-400"
+                            />
+                            <input
+                              type="number"
+                              value={item.amount || ''}
+                              onChange={(e) => updateIncentiveItem(idx, { amount: Number(e.target.value) || 0 })}
+                              placeholder="0"
+                              className="col-span-3 border border-gray-200 rounded px-2 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-purple-400"
+                            />
+                            <button type="button" onClick={() => removeIncentiveRow(idx)}
+                              className="col-span-1 flex justify-center text-gray-300 hover:text-red-500">
+                              <X size={13} />
+                            </button>
+                          </div>
+                        ))}
+                        {incentiveItems.length > 1 && (
+                          <div className="px-3 py-2 bg-purple-50 border-t border-purple-100 text-right text-sm font-semibold text-purple-700">
+                            รวม Incentive: {formatCurrency(incentiveTotal)}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <button type="button" onClick={addIncentiveRow}
+                    className="mt-2 flex items-center gap-1 text-sm text-purple-600 hover:text-purple-800 border border-dashed border-purple-300 px-3 py-1.5 rounded-lg hover:bg-purple-50">
+                    <Plus size={14} /> เพิ่มรายการ Incentive
+                  </button>
                 </div>
               </div>
             )}
