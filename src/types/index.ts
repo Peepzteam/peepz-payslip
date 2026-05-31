@@ -40,6 +40,16 @@ export interface LineItem {
   total: number
 }
 
+export interface OtItem {
+  date: string        // YYYY-MM-DD
+  start_time: string  // HH:MM
+  end_time: string    // HH:MM
+  hours: number       // auto-calc
+  type: 'normal' | 'holiday'
+  rate: number        // per hour
+  amount: number      // hours * rate
+}
+
 export interface Payslip {
   id: string
   employee_id: string | null
@@ -71,6 +81,7 @@ export interface Payslip {
   admin_note: string | null
   transfer_date: string | null
   line_items: LineItem[] | null
+  ot_items: OtItem[] | null
   created_at: string
   employee?: Employee
 }

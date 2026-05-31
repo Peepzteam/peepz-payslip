@@ -1,6 +1,6 @@
 'use client'
 import { useRef } from 'react'
-import { Payslip, LineItem } from '@/types'
+import { Payslip, LineItem, OtItem } from '@/types'
 import { formatCurrency, formatPeriod } from '@/lib/utils'
 import { Download, Image } from 'lucide-react'
 
@@ -121,11 +121,31 @@ export default function PayslipCard({ payslip, showExport = false }: Props) {
               <>
                 <Row label="เงินเดือนพื้นฐาน" value={payslip.base_salary} />
                 {payslip.ot_amount > 0 && (
-                  <Row
-                    label={`ค่า OT (${payslip.ot_hours} ชม. × ${formatCurrency(payslip.ot_rate)}/ชม.)`}
-                    value={payslip.ot_amount}
-                    sub
-                  />
+                  payslip.ot_items?.length ? (
+                    <div className="pl-2 space-y-1">
+                      <p className="text-xs font-medium text-gray-500 mt-1">ค่า OT รายวัน</p>
+                      {payslip.ot_items.map((item: OtItem, i: number) => (
+                        <div key={i} className="flex justify-between text-xs text-gray-600">
+                          <span>
+                            {item.date ? new Date(item.date).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' }) : ''}
+                            {item.start_time && item.end_time ? ` ${item.start_time}–${item.end_time}` : ''}
+                            {` (${item.hours} ชม. × ${formatCurrency(item.rate)} — ${item.type === 'holiday' ? 'วันหยุด' : 'ปกติ'})`}
+                          </span>
+                          <span className="font-medium">{formatCurrency(item.amount)}</span>
+                        </div>
+                      ))}
+                      <div className="flex justify-between text-sm font-medium text-gray-700 border-t border-gray-100 pt-1">
+                        <span>รวม OT</span>
+                        <span>{formatCurrency(payslip.ot_amount)}</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <Row
+                      label={`ค่า OT (${payslip.ot_hours} ชม. × ${formatCurrency(payslip.ot_rate)}/ชม.)`}
+                      value={payslip.ot_amount}
+                      sub
+                    />
+                  )
                 )}
                 {payslip.incentive > 0 && (
                   <Row
@@ -230,7 +250,15 @@ function buildPrintHtml(payslip: Payslip): string {
         : `<tr><td style="padding:6px 0;color:#374151">ค่าจ้าง${payslip.project_name ? ` (${payslip.project_name})` : ''}</td><td style="padding:6px 0;text-align:right;font-weight:500">${formatCurrency(payslip.base_salary)}</td></tr>`
       )
     : `<tr><td style="padding:6px 0;color:#374151">เงินเดือนพื้นฐาน</td><td style="padding:6px 0;text-align:right;font-weight:500">${formatCurrency(payslip.base_salary)}</td></tr>
-       ${payslip.ot_amount > 0 ? `<tr><td style="padding:6px 0;color:#374151;padding-left:12px;font-size:13px">ค่า OT (${payslip.ot_hours} ชม. × ${formatCurrency(payslip.ot_rate)}/ชม.)</td><td style="padding:6px 0;text-align:right;font-size:13px">${formatCurrency(payslip.ot_amount)}</td></tr>` : ''}
+       ${payslip.ot_amount > 0 ? (
+         payslip.ot_items?.length
+           ? `<tr><td colspan="2" style="padding:4px 0 2px 12px;font-size:12px;color:#6b7280;font-weight:600">ค่า OT รายวัน</td></tr>` +
+             payslip.ot_items.map((item: OtItem) =>
+               `<tr><td style="padding:2px 0 2px 12px;font-size:12px;color:#374151">${item.date ? new Date(item.date).toLocaleDateString('th-TH',{day:'numeric',month:'short'}) : ''}${item.start_time&&item.end_time?` ${item.start_time}–${item.end_time}`:''} (${item.hours} ชม. × ${formatCurrency(item.rate)} ${item.type==='holiday'?'วันหยุด':'ปกติ'})</td><td style="padding:2px 0;text-align:right;font-size:12px">${formatCurrency(item.amount)}</td></tr>`
+             ).join('') +
+             `<tr><td style="padding:4px 0 4px 12px;font-size:13px;font-weight:600;color:#374151">รวม OT</td><td style="padding:4px 0;text-align:right;font-size:13px;font-weight:600">${formatCurrency(payslip.ot_amount)}</td></tr>`
+           : `<tr><td style="padding:6px 0;color:#374151;padding-left:12px;font-size:13px">ค่า OT (${payslip.ot_hours} ชม. × ${formatCurrency(payslip.ot_rate)}/ชม.)</td><td style="padding:6px 0;text-align:right;font-size:13px">${formatCurrency(payslip.ot_amount)}</td></tr>`
+       ) : ''}
        ${payslip.incentive > 0 ? `<tr><td style="padding:6px 0;color:#374151;padding-left:12px;font-size:13px">Incentive${payslip.incentive_note ? ` — ${payslip.incentive_note}` : ''}</td><td style="padding:6px 0;text-align:right;font-size:13px">${formatCurrency(payslip.incentive)}</td></tr>` : ''}`
 
   const otherIncomeRow = payslip.other_income > 0

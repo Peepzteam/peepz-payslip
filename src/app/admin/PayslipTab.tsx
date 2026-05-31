@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useState, useRef } from 'react'
-import { Employee, Payslip, LineItem } from '@/types'
+import { Employee, Payslip, LineItem, OtItem } from '@/types'
 import { formatCurrency, formatPeriod } from '@/lib/utils'
 import { Send, Upload, Plus, Download, Pencil, Trash2, Eye, X, Banknote } from 'lucide-react'
 import { calculateTax } from '@/lib/tax'
@@ -8,9 +8,18 @@ import PayslipCard from '@/components/PayslipCard'
 
 const UNITS = ['ชม.', 'วัน', 'งาน', 'ครั้ง', 'เดือน', 'ชิ้น']
 const EMPTY_LINE: LineItem = { description: '', quantity: 1, unit: 'ชม.', rate: 0, total: 0 }
+const EMPTY_OT: OtItem = { date: '', start_time: '', end_time: '', hours: 0, type: 'normal', rate: 0, amount: 0 }
 
 const CURRENT_YEAR = new Date().getFullYear()
 const CURRENT_MONTH = new Date().getMonth() + 1
+
+function calcHours(start: string, end: string): number {
+  if (!start || !end) return 0
+  const [sh, sm] = start.split(':').map(Number)
+  const [eh, em] = end.split(':').map(Number)
+  const diff = (eh * 60 + em) - (sh * 60 + sm)
+  return diff > 0 ? Math.round(diff / 60 * 100) / 100 : 0
+}
 
 export default function PayslipTab() {
   const [employees, setEmployees] = useState<Employee[]>([])
@@ -28,10 +37,8 @@ export default function PayslipTab() {
   const [editingPayslip, setEditingPayslip] = useState<Payslip | null>(null)
   const [deleting, setDeleting] = useState<string | null>(null)
   const [lineItems, setLineItems] = useState<LineItem[]>([{ ...EMPTY_LINE }])
+  const [otItems, setOtItems] = useState<OtItem[]>([])
 
-  const [otType, setOtType] = useState<'normal' | 'holiday'>('normal')
-  const [holidayDays, setHolidayDays] = useState('')
-  const [holidayOtHours, setHolidayOtHours] = useState('')
   const [guestMode, setGuestMode] = useState(false)
   const [guestName, setGuestName] = useState('')
   const [guestEmail, setGuestEmail] = useState('')
@@ -42,7 +49,6 @@ export default function PayslipTab() {
     period_month: CURRENT_MONTH,
     period_year: CURRENT_YEAR,
     base_salary: '',
-    ot_hours: '', ot_rate: '',
     incentive: '', incentive_note: '',
     other_income: '', other_income_note: '',
     project_name: '', work_days: '', daily_rate: '',
@@ -58,11 +64,18 @@ export default function PayslipTab() {
   const isFreelance = guestMode ? guestType === 'freelance' : selectedEmployee?.type === 'freelance'
 
   const dailyRate = (Number(form.base_salary) || 0) / 30
-  const normalOtRate = Math.round(dailyRate / 8 * 1.5 * 100) / 100   // ×1.5 วันทำงานปกติ
-  const holidayHourlyOtRate = Math.round(dailyRate / 8 * 3 * 100) / 100  // ×3 วันหยุด
-  const otAmount = otType === 'holiday'
-    ? (Number(holidayDays) || 0) * dailyRate + (Number(holidayOtHours) || 0) * holidayHourlyOtRate
-    : (Number(form.ot_hours) || 0) * normalOtRate
+  const normalOtRate = Math.round(dailyRate / 8 * 1.5 * 100) / 100
+  const holidayOtRate = Math.round(dailyRate / 8 * 3 * 100) / 100
+
+  // OT items with auto-computed rates
+  const otItemsWithRate = otItems.map((item) => {
+    const rate = item.type === 'holiday' ? holidayOtRate : normalOtRate
+    const hours = item.hours || calcHours(item.start_time, item.end_time)
+    const amount = Math.round(hours * rate * 100) / 100
+    return { ...item, rate, hours, amount }
+  })
+  const otAmount = otItemsWithRate.reduce((s, i) => s + i.amount, 0)
+
   const lineItemsTotal = lineItems.reduce((s, i) => s + (i.total || 0), 0)
   const grossIncome = isFreelance
     ? lineItemsTotal + (Number(form.other_income) || 0)
@@ -75,7 +88,6 @@ export default function PayslipTab() {
 
   const subtotalBeforeIncentive = (Number(form.base_salary) || 0) - (Number(form.social_security) || 0) + otAmount
 
-  // คำนวณภาษีเงินได้บุคคลธรรมดา (พนักงานประจำเท่านั้น)
   const taxCalc = !isFreelance && form.base_salary
     ? calculateTax(
         Number(form.base_salary) || 0,
@@ -85,7 +97,6 @@ export default function PayslipTab() {
       )
     : null
 
-  // auto-update withholding_tax เมื่อ lineItems เปลี่ยน (freelance)
   useEffect(() => {
     if (!isFreelance) return
     const tax = String(Math.round(lineItemsTotal * 0.03 * 100) / 100)
@@ -97,7 +108,6 @@ export default function PayslipTab() {
     fetch('/api/employees').then((r) => r.json()).then((d) => setEmployees(Array.isArray(d) ? d : []))
   }, [])
 
-  // Auto-fill when employee changes (skip when editing existing payslip)
   useEffect(() => {
     if (!selectedEmployee || editingPayslip) return
     const isFree = selectedEmployee.type === 'freelance'
@@ -118,8 +128,31 @@ export default function PayslipTab() {
       .then((d) => { setPayslips(Array.isArray(d) ? d : []); setLoading(false) })
   }, [filterMonth, filterYear])
 
+  function updateOtItem(idx: number, patch: Partial<OtItem>) {
+    setOtItems((prev) => {
+      const next = [...prev]
+      const item = { ...next[idx], ...patch }
+      // auto-calc hours from time if not explicitly set
+      if ('start_time' in patch || 'end_time' in patch) {
+        item.hours = calcHours(item.start_time, item.end_time)
+      }
+      next[idx] = item
+      return next
+    })
+  }
+
+  function addOtRow() {
+    const today = new Date().toISOString().slice(0, 10)
+    setOtItems((prev) => [...prev, { ...EMPTY_OT, date: today }])
+  }
+
+  function removeOtRow(idx: number) {
+    setOtItems((prev) => prev.filter((_, i) => i !== idx))
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    const finalOtItems = otItemsWithRate
     const payload = {
       employee_id: guestMode ? null : form.employee_id,
       guest_name: guestMode ? guestName : null,
@@ -128,9 +161,10 @@ export default function PayslipTab() {
       period_month: Number(form.period_month),
       period_year: Number(form.period_year),
       base_salary: Number(form.base_salary) || 0,
-      ot_hours: otType === 'holiday' ? Number(holidayOtHours) || 0 : Number(form.ot_hours) || 0,
-      ot_rate: otType === 'holiday' ? holidayHourlyOtRate : (Number(form.ot_rate) || normalOtRate),
+      ot_hours: finalOtItems.reduce((s, i) => s + i.hours, 0),
+      ot_rate: finalOtItems.length === 1 ? finalOtItems[0].rate : normalOtRate,
       ot_amount: otAmount,
+      ot_items: finalOtItems,
       incentive: Number(form.incentive) || 0,
       incentive_note: form.incentive_note,
       other_income: Number(form.other_income) || 0,
@@ -154,6 +188,7 @@ export default function PayslipTab() {
     })
     if (res.ok) {
       setShowForm(false)
+      setOtItems([])
       fetch(`/api/payslips?month=${filterMonth}&year=${filterYear}`)
         .then((r) => r.json()).then((d) => setPayslips(Array.isArray(d) ? d : []))
     }
@@ -196,14 +231,20 @@ export default function PayslipTab() {
   function startEdit(p: Payslip) {
     if (p.line_items?.length) setLineItems(p.line_items)
     else setLineItems([{ ...EMPTY_LINE }])
+    // Load ot_items or convert legacy ot_hours to single row
+    if (p.ot_items?.length) {
+      setOtItems(p.ot_items)
+    } else if (p.ot_hours > 0) {
+      setOtItems([{ date: '', start_time: '', end_time: '', hours: p.ot_hours, type: 'normal', rate: p.ot_rate, amount: p.ot_amount }])
+    } else {
+      setOtItems([])
+    }
     setEditingPayslip(p)
     setForm({
       employee_id: p.employee_id ?? '',
       period_month: p.period_month,
       period_year: p.period_year,
       base_salary: p.base_salary.toString(),
-      ot_hours: p.ot_hours.toString(),
-      ot_rate: p.ot_rate.toString(),
       incentive: p.incentive.toString(),
       incentive_note: p.incentive_note || '',
       other_income: p.other_income.toString(),
@@ -226,13 +267,15 @@ export default function PayslipTab() {
   async function handleUpdate(e: React.FormEvent) {
     e.preventDefault()
     if (!editingPayslip) return
+    const finalOtItems = otItemsWithRate
     const payload = {
       period_month: Number(form.period_month),
       period_year: Number(form.period_year),
       base_salary: Number(form.base_salary) || 0,
-      ot_hours: otType === 'holiday' ? Number(holidayOtHours) || 0 : Number(form.ot_hours) || 0,
-      ot_rate: otType === 'holiday' ? holidayHourlyOtRate : Number(form.ot_rate) || 0,
+      ot_hours: finalOtItems.reduce((s, i) => s + i.hours, 0),
+      ot_rate: finalOtItems.length === 1 ? finalOtItems[0].rate : normalOtRate,
       ot_amount: otAmount,
+      ot_items: finalOtItems,
       incentive: Number(form.incentive) || 0,
       incentive_note: form.incentive_note,
       other_income: Number(form.other_income) || 0,
@@ -258,6 +301,7 @@ export default function PayslipTab() {
       setPayslips((prev) => prev.map((p) => (p.id === updated.id ? updated : p)))
       setShowForm(false)
       setEditingPayslip(null)
+      setOtItems([])
     }
   }
 
@@ -287,6 +331,39 @@ export default function PayslipTab() {
     a.click()
   }
 
+  function exportCSV() {
+    const MONTHS_TH = ['','ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.']
+    const headers = ['ชื่อ','อีเมล','งวด','ประเภท','เงินเดือน','OT (ชม.)','ค่า OT','Incentive','รายได้อื่น','รวมรายได้','ประกันสังคม','ภาษีหัก','หักอื่น','รวมหัก','ยอดสุทธิ','วันที่โอน','หมายเหตุ']
+    const rows = payslips.map((p) => [
+      p.employee?.name ?? p.guest_name ?? '',
+      p.employee?.email ?? p.guest_email ?? '',
+      `${MONTHS_TH[p.period_month]} ${p.period_year + 543}`,
+      p.employee ? (p.employee.type === 'freelance' ? 'Freelance' : 'ประจำ') : (p.guest_type === 'freelance' ? 'Freelance' : 'ประจำ'),
+      p.base_salary,
+      p.ot_hours,
+      p.ot_amount,
+      p.incentive,
+      p.other_income,
+      p.gross_income,
+      p.social_security,
+      p.withholding_tax,
+      p.other_deduction,
+      p.total_deduction,
+      p.net_pay,
+      p.transfer_date ? new Date(p.transfer_date).toLocaleDateString('th-TH') : '',
+      p.admin_note ?? '',
+    ])
+    const csv = [headers, ...rows].map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    const MONTHS_TH2 = ['','มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม']
+    a.download = `payslips-${MONTHS_TH2[filterMonth]}-${filterYear + 543}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   const MONTHS = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
 
   return (
@@ -313,7 +390,7 @@ export default function PayslipTab() {
             ))}
           </select>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <button onClick={downloadTemplate} className="flex items-center gap-1 text-sm border border-gray-300 px-3 py-2 rounded-lg hover:bg-gray-50">
             <Download size={15} /> Template
           </button>
@@ -321,7 +398,12 @@ export default function PayslipTab() {
             <Upload size={15} /> {importing ? 'กำลังนำเข้า...' : 'Import Excel/CSV'}
             <input ref={fileRef} type="file" accept=".xlsx,.csv" className="hidden" onChange={handleImport} disabled={importing} />
           </label>
-          <button onClick={() => { setShowForm(!showForm); setEditingPayslip(null) }} className="flex items-center gap-1 text-sm bg-indigo-600 text-white px-3 py-2 rounded-lg hover:bg-indigo-700">
+          {payslips.length > 0 && (
+            <button onClick={exportCSV} className="flex items-center gap-1 text-sm border border-gray-300 px-3 py-2 rounded-lg hover:bg-gray-50 text-green-700 border-green-300">
+              <Download size={15} /> Export CSV
+            </button>
+          )}
+          <button onClick={() => { setShowForm(!showForm); setEditingPayslip(null); setOtItems([]) }} className="flex items-center gap-1 text-sm bg-indigo-600 text-white px-3 py-2 rounded-lg hover:bg-indigo-700">
             <Plus size={15} /> สร้างสลิป
           </button>
         </div>
@@ -414,7 +496,6 @@ export default function PayslipTab() {
             <h4 className="text-sm font-semibold text-gray-600 mb-3">รายได้</h4>
             {isFreelance ? (
               <div className="space-y-2">
-                {/* header */}
                 <div className="grid grid-cols-12 gap-2 text-xs font-medium text-gray-500 px-1">
                   <div className="col-span-4">ประเภทงาน</div>
                   <div className="col-span-2">จำนวน</div>
@@ -481,98 +562,83 @@ export default function PayslipTab() {
             ) : (
               <div className="grid grid-cols-3 gap-4">
                 <FField label="เงินเดือน (บาท)" value={form.base_salary} onChange={(v) => {
-                  // ถ้าเลือก OT วันหยุดตามประเพณี ให้คำนวณอัตราใหม่อัตโนมัติ
-                  const holidayRate = otType === 'holiday'
-                    ? String(Math.round((Number(v) / 30 / 8) * 3 * 100) / 100)
-                    : form.ot_rate
-                  setForm({ ...form, base_salary: v, ot_rate: holidayRate })
+                  setForm({ ...form, base_salary: v })
                 }} type="number" />
 
-                {/* OT Type */}
+                {/* OT Section — multi-row */}
                 <div className="col-span-3">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">ประเภท OT</label>
-                  <div className="flex gap-3 flex-wrap">
-                    {[
-                      { val: 'normal', label: 'OT วันทำงานปกติ (×1.5)', desc: '' },
-                      { val: 'holiday', label: 'ทำงานในวันหยุดตามประเพณี', desc: '' },
-                    ].map((opt) => (
-                      <label key={opt.val} className={`flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer text-sm transition ${otType === opt.val ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}>
-                        <input type="radio" name="ot_type" value={opt.val} checked={otType === opt.val}
-                          onChange={() => setOtType(opt.val as 'normal' | 'holiday')}
-                          className="accent-indigo-600" />
-                        <span>{opt.label}</span>
-                      </label>
-                    ))}
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-sm font-medium text-gray-700">การทำงานล่วงเวลา (OT)</label>
+                    {form.base_salary && Number(form.base_salary) > 0 && (
+                      <div className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded">
+                        ปกติ ×1.5 = <strong>{formatCurrency(normalOtRate)}</strong>/ชม. &nbsp;|&nbsp; วันหยุด ×3 = <strong>{formatCurrency(holidayOtRate)}</strong>/ชม.
+                      </div>
+                    )}
                   </div>
-                </div>
 
-                {otType === 'normal' ? (
-                  <>
-                    <div className="col-span-3">
-                      {form.base_salary && Number(form.base_salary) > 0 && (
-                        <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 text-sm text-blue-800 mb-3 space-y-1">
-                          <p className="font-semibold">สูตร OT วันทำงานปกติ (กฎหมายแรงงาน ×1.5)</p>
-                          <p>อัตรา/ชม. = {formatCurrency(Number(form.base_salary))} ÷ 30 ÷ 8 × 1.5 = <strong>{formatCurrency(normalOtRate)}</strong>/ชม.</p>
+                  {otItems.length > 0 && (
+                    <div className="border border-gray-200 rounded-lg overflow-hidden mb-2">
+                      {/* Header */}
+                      <div className="grid grid-cols-12 gap-1 bg-gray-50 px-3 py-2 text-xs font-medium text-gray-500">
+                        <div className="col-span-2">วันที่</div>
+                        <div className="col-span-2">เริ่ม</div>
+                        <div className="col-span-2">จบ</div>
+                        <div className="col-span-1 text-center">ชม.</div>
+                        <div className="col-span-2">ประเภท</div>
+                        <div className="col-span-1 text-right">อัตรา</div>
+                        <div className="col-span-1 text-right">ยอด</div>
+                        <div className="col-span-1" />
+                      </div>
+                      {/* Rows */}
+                      {otItemsWithRate.map((item, idx) => (
+                        <div key={idx} className="grid grid-cols-12 gap-1 items-center px-3 py-2 border-t border-gray-100 hover:bg-gray-50">
+                          <input type="date" value={item.date}
+                            onChange={(e) => updateOtItem(idx, { date: e.target.value })}
+                            className="col-span-2 border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-400" />
+                          <input type="time" value={item.start_time}
+                            onChange={(e) => updateOtItem(idx, { start_time: e.target.value })}
+                            className="col-span-2 border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-400" />
+                          <input type="time" value={item.end_time}
+                            onChange={(e) => updateOtItem(idx, { end_time: e.target.value })}
+                            className="col-span-2 border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-400" />
+                          <div className="col-span-1 text-center">
+                            {item.hours > 0
+                              ? <span className="text-xs font-medium text-indigo-700">{item.hours}</span>
+                              : <input type="number" value={item.hours || ''}
+                                  onChange={(e) => updateOtItem(idx, { hours: Number(e.target.value) || 0 })}
+                                  placeholder="0"
+                                  className="w-full border border-gray-200 rounded px-1 py-1 text-xs text-center focus:outline-none focus:ring-1 focus:ring-indigo-400" />
+                            }
+                          </div>
+                          <select value={item.type}
+                            onChange={(e) => updateOtItem(idx, { type: e.target.value as 'normal' | 'holiday' })}
+                            className="col-span-2 border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-400">
+                            <option value="normal">ปกติ ×1.5</option>
+                            <option value="holiday">วันหยุด ×3</option>
+                          </select>
+                          <div className="col-span-1 text-right text-xs text-gray-500">{formatCurrency(item.rate)}</div>
+                          <div className="col-span-1 text-right text-xs font-semibold text-indigo-700">{formatCurrency(item.amount)}</div>
+                          <button type="button" onClick={() => removeOtRow(idx)}
+                            className="col-span-1 flex justify-center text-gray-300 hover:text-red-500">
+                            <X size={13} />
+                          </button>
+                        </div>
+                      ))}
+                      {/* OT total */}
+                      {otItems.length > 0 && (
+                        <div className="px-3 py-2 bg-indigo-50 border-t border-indigo-100 text-right text-sm font-semibold text-indigo-700">
+                          รวม OT: {formatCurrency(otAmount)}
                         </div>
                       )}
                     </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">OT (ชั่วโมง)</label>
-                      <input type="number" value={form.ot_hours} onChange={(e) => setForm({ ...form, ot_hours: e.target.value })} placeholder="0"
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">อัตรา OT/ชม. (บาท)</label>
-                      <input type="number" value={form.ot_rate || (form.base_salary ? String(normalOtRate) : '')}
-                        onChange={(e) => setForm({ ...form, ot_rate: e.target.value })} placeholder={form.base_salary ? String(normalOtRate) : '0'}
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-indigo-50" />
-                      {form.base_salary && <p className="text-xs text-indigo-500 mt-1">คำนวณอัตโนมัติจากเงินเดือน — แก้ได้ถ้าต้องการ</p>}
-                    </div>
-                    <div />
-                    {Number(form.ot_hours) > 0 && (
-                      <div className="col-span-3 text-sm text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg px-4 py-3">
-                        <strong>{form.ot_hours} ชม.</strong> × {formatCurrency(Number(form.ot_rate) || normalOtRate)} = <strong className="text-lg">{formatCurrency(otAmount)}</strong>
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <div className="col-span-3 space-y-3">
-                    {/* อธิบายสูตร */}
-                    {form.base_salary && (
-                      <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 text-sm text-blue-800 space-y-1">
-                        <p className="font-semibold">สูตรคำนวณ (เงินเดือน {formatCurrency(Number(form.base_salary))})</p>
-                        <p>• อัตราค่าจ้างต่อวัน = {formatCurrency(Number(form.base_salary))} ÷ 30 = <strong>{formatCurrency(dailyRate)}</strong>/วัน</p>
-                        <p>• OT เกิน 8 ชม. = {formatCurrency(dailyRate)} ÷ 8 × 3 = <strong>{formatCurrency(holidayHourlyOtRate)}</strong>/ชม.</p>
-                      </div>
-                    )}
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">จำนวนวันที่ทำงานในวันหยุด</label>
-                        <input type="number" value={holidayDays} onChange={(e) => setHolidayDays(e.target.value)} placeholder="0" min="0"
-                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
-                        {holidayDays && form.base_salary && (
-                          <p className="text-xs text-gray-500 mt-1">{holidayDays} วัน × {formatCurrency(dailyRate)} = <span className="text-indigo-600 font-medium">{formatCurrency(Number(holidayDays) * dailyRate)}</span></p>
-                        )}
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">ชม. OT เกิน 8 ชม./วัน</label>
-                        <input type="number" value={holidayOtHours} onChange={(e) => setHolidayOtHours(e.target.value)} placeholder="0" min="0"
-                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
-                        {holidayOtHours && form.base_salary && (
-                          <p className="text-xs text-gray-500 mt-1">{holidayOtHours} ชม. × {formatCurrency(holidayHourlyOtRate)} = <span className="text-indigo-600 font-medium">{formatCurrency(Number(holidayOtHours) * holidayHourlyOtRate)}</span></p>
-                        )}
-                      </div>
-                    </div>
-                    {(Number(holidayDays) > 0 || Number(holidayOtHours) > 0) && (
-                      <div className="bg-indigo-50 border border-indigo-200 rounded-lg px-4 py-3 text-sm text-indigo-800">
-                        <p className="font-semibold mb-1">สรุป OT วันหยุดตามประเพณี</p>
-                        {Number(holidayDays) > 0 && <p>ค่าทำงานวันหยุด: {holidayDays} วัน × {formatCurrency(dailyRate)} = {formatCurrency(Number(holidayDays) * dailyRate)} บาท</p>}
-                        {Number(holidayOtHours) > 0 && <p>OT เกิน 8 ชม.: {holidayOtHours} ชม. × {formatCurrency(holidayHourlyOtRate)} = {formatCurrency(Number(holidayOtHours) * holidayHourlyOtRate)} บาท</p>}
-                        <p className="font-bold border-t border-indigo-200 mt-1 pt-1">รวมทั้งหมด = <span className="text-lg">{formatCurrency(otAmount)}</span></p>
-                      </div>
-                    )}
-                  </div>
-                )}
+                  )}
+
+                  <button type="button" onClick={addOtRow}
+                    className="flex items-center gap-1 text-sm text-indigo-600 hover:text-indigo-800 border border-dashed border-indigo-300 px-3 py-1.5 rounded-lg hover:bg-indigo-50">
+                    <Plus size={14} /> เพิ่มแถว OT
+                  </button>
+                </div>
+
                 <FField
                   label="Incentive (บาท)"
                   value={form.incentive}
@@ -598,7 +664,6 @@ export default function PayslipTab() {
           <div className="border-t pt-4">
             <h4 className="text-sm font-semibold text-gray-600 mb-1">รายการหัก</h4>
             <p className="text-xs text-gray-400 mb-1">คำนวณอัตโนมัติ — แก้ไขได้ถ้าจำเป็น</p>
-            {/* Tax calculator - พนักงานประจำ */}
             {taxCalc && (
               <div className={`rounded-lg border mb-3 overflow-hidden ${taxCalc.taxableIncome > 150000 ? 'border-amber-200' : 'border-green-200'}`}>
                 <div className={`px-4 py-2 flex items-center justify-between ${taxCalc.taxableIncome > 150000 ? 'bg-amber-50' : 'bg-green-50'}`}>
@@ -720,7 +785,7 @@ export default function PayslipTab() {
                 💾 บันทึก & ส่ง Email
               </button>
             )}
-            <button type="button" onClick={() => { setShowForm(false); setEditingPayslip(null) }} className="border border-gray-300 px-5 py-2 rounded-lg text-sm hover:bg-gray-50">ยกเลิก</button>
+            <button type="button" onClick={() => { setShowForm(false); setEditingPayslip(null); setOtItems([]) }} className="border border-gray-300 px-5 py-2 rounded-lg text-sm hover:bg-gray-50">ยกเลิก</button>
           </div>
         </form>
       )}
@@ -744,8 +809,8 @@ export default function PayslipTab() {
               {payslips.map((p) => (
                 <tr key={p.id} className="hover:bg-gray-50">
                   <td className="px-4 py-3">
-                    <p className="font-medium text-gray-800">{p.employee?.name}</p>
-                    <p className="text-xs text-gray-400">{p.employee?.email}</p>
+                    <p className="font-medium text-gray-800">{p.employee?.name ?? p.guest_name}</p>
+                    <p className="text-xs text-gray-400">{p.employee?.email ?? p.guest_email}</p>
                   </td>
                   <td className="px-4 py-3 text-gray-600">
                     {formatPeriod(p.period_month, p.period_year)}
@@ -820,7 +885,7 @@ export default function PayslipTab() {
 }
 
 function FField({ label, value, onChange, type = 'text' }: {
-  label: string; value: string; onChange: (v: string) => void; type?: string
+  label: string; value: string | number; onChange: (v: string) => void; type?: string
 }) {
   return (
     <div>
