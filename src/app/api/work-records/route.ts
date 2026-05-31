@@ -9,7 +9,7 @@ export async function GET(req: NextRequest) {
 
   let query = supabaseAdmin
     .from('work_records')
-    .select('*, employee:employees(id,name,employee_code,type)')
+    .select('*')
     .order('date', { ascending: true })
 
   if (month && year) {
