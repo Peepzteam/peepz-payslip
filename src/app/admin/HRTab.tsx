@@ -2,7 +2,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { Employee } from '@/types'
 import { formatCurrency } from '@/lib/utils'
-import { ChevronLeft, ChevronRight, Users, Clock, Calendar, TrendingUp, AlertCircle, Download, X, Save } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Users, Clock, Calendar, TrendingUp, AlertCircle, Download, X, Save, CalendarRange } from 'lucide-react'
 
 interface WorkRecord {
   id?: string
@@ -63,6 +63,23 @@ export default function HRTab() {
   // Cell editor
   const [editCell, setEditCell] = useState<{ empId: string; day: number } | null>(null)
   const [cellForm, setCellForm] = useState<Partial<WorkRecord>>({})
+
+  // Bulk fill
+  const [showBulk, setShowBulk] = useState(false)
+  const [bulkForm, setBulkForm] = useState({
+    empIds: [] as string[],
+    dateFrom: '',
+    dateTo: '',
+    status: 'present',
+    check_in: '09:00',
+    check_out: '18:00',
+    ot_hours: 0,
+    ot_type: 'normal',
+    note: '',
+    skipWeekend: true,
+    skipHoliday: true,
+  })
+  const [bulkSaving, setBulkSaving] = useState(false)
 
   const gridRef = useRef<HTMLDivElement>(null)
 
@@ -155,6 +172,55 @@ export default function HRTab() {
     setEdits({})
     await load()
     setSaving(false)
+  }
+
+  async function applyBulk() {
+    if (!bulkForm.dateFrom || !bulkForm.dateTo || bulkForm.empIds.length === 0) {
+      alert('กรุณาเลือกพนักงาน วันเริ่มต้น และวันสิ้นสุด')
+      return
+    }
+    setBulkSaving(true)
+    const holidayDates = new Set(holidays.map(h => h.date))
+    const payload: Partial<WorkRecord>[] = []
+    const from = new Date(bulkForm.dateFrom + 'T00:00:00')
+    const to = new Date(bulkForm.dateTo + 'T00:00:00')
+    for (let d = new Date(from); d <= to; d.setDate(d.getDate() + 1)) {
+      const dow = d.getDay()
+      if (bulkForm.skipWeekend && (dow === 0 || dow === 6)) continue
+      const iso = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+      if (bulkForm.skipHoliday && holidayDates.has(iso)) continue
+      for (const empId of bulkForm.empIds) {
+        payload.push({
+          employee_id: empId,
+          date: iso,
+          status: bulkForm.status,
+          check_in: bulkForm.check_in || null,
+          check_out: bulkForm.check_out || null,
+          ot_hours: bulkForm.ot_hours,
+          ot_type: bulkForm.ot_type,
+          note: bulkForm.note || null,
+        })
+      }
+    }
+    if (payload.length === 0) {
+      alert('ไม่มีวันที่ต้องกรอก (อาจถูกข้ามทั้งหมดเพราะเป็นเสาร์-อาทิตย์/วันหยุด)')
+      setBulkSaving(false)
+      return
+    }
+    const res = await fetch('/api/work-records/bulk', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Unknown error' }))
+      alert('บันทึกไม่ได้: ' + (err.error || JSON.stringify(err)))
+    } else {
+      alert(`✅ บันทึกสำเร็จ ${payload.length} รายการ`)
+      setShowBulk(false)
+      await load()
+    }
+    setBulkSaving(false)
   }
 
   async function exportPNG() {
@@ -294,6 +360,12 @@ export default function HRTab() {
                 <Save size={13} /> {saving ? 'กำลังบันทึก...' : `บันทึก ${pendingCount} รายการ`}
               </button>
             )}
+            {subTab === 'attendance' && (
+              <button onClick={() => setShowBulk(true)}
+                className="flex items-center gap-1.5 bg-violet-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-violet-700">
+                <CalendarRange size={13} /> กรอกแบบช่วง
+              </button>
+            )}
             <button onClick={exportPNG}
               className="flex items-center gap-1.5 border border-gray-300 text-gray-600 px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-gray-50">
               <Download size={13} /> บันทึก PNG
@@ -320,6 +392,153 @@ export default function HRTab() {
         )}
         </div>
       </div>
+
+      {/* ─── Bulk Fill Modal ─── */}
+      {showBulk && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between px-6 pt-5 pb-3 border-b border-gray-100">
+              <div>
+                <p className="font-bold text-gray-800 text-base">📅 กรอกการทำงานแบบช่วง</p>
+                <p className="text-xs text-gray-400 mt-0.5">เลือกช่วงวันที่ แล้วกรอกข้อมูลทีเดียว</p>
+              </div>
+              <button onClick={() => setShowBulk(false)} className="text-gray-400 hover:text-gray-600 p-1"><X size={18} /></button>
+            </div>
+            <div className="px-6 py-4 space-y-4">
+
+              {/* Employee selector */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">พนักงาน *</label>
+                <div className="space-y-1 max-h-36 overflow-y-auto border border-gray-200 rounded-xl p-2">
+                  <label className="flex items-center gap-2 px-2 py-1 cursor-pointer hover:bg-gray-50 rounded-lg">
+                    <input type="checkbox"
+                      checked={bulkForm.empIds.length === employees.length}
+                      onChange={e => setBulkForm(f => ({ ...f, empIds: e.target.checked ? employees.map(emp => emp.id) : [] }))}
+                      className="w-3.5 h-3.5 accent-violet-600" />
+                    <span className="text-xs font-semibold text-violet-600">เลือกทั้งหมด</span>
+                  </label>
+                  {employees.map(emp => (
+                    <label key={emp.id} className="flex items-center gap-2 px-2 py-1 cursor-pointer hover:bg-gray-50 rounded-lg">
+                      <input type="checkbox"
+                        checked={bulkForm.empIds.includes(emp.id)}
+                        onChange={e => setBulkForm(f => ({
+                          ...f,
+                          empIds: e.target.checked ? [...f.empIds, emp.id] : f.empIds.filter(id => id !== emp.id)
+                        }))}
+                        className="w-3.5 h-3.5 accent-violet-600" />
+                      <span className="text-sm text-gray-700">{emp.name}</span>
+                      <span className="text-xs text-gray-400">{emp.employee_code}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {/* Date range */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">วันที่เริ่ม *</label>
+                  <input type="date" value={bulkForm.dateFrom}
+                    onChange={e => setBulkForm(f => ({ ...f, dateFrom: e.target.value }))}
+                    className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">วันที่สิ้นสุด *</label>
+                  <input type="date" value={bulkForm.dateTo}
+                    onChange={e => setBulkForm(f => ({ ...f, dateTo: e.target.value }))}
+                    className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400" />
+                </div>
+              </div>
+
+              {/* Status */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-2">สถานะ</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {STATUS_OPTIONS.map(s => (
+                    <button key={s.val} type="button"
+                      onClick={() => setBulkForm(f => ({ ...f, status: s.val }))}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-medium transition ${bulkForm.status === s.val ? s.color + ' border-current' : 'border-gray-200 text-gray-500 hover:border-gray-300'}`}>
+                      <span className={`w-2 h-2 rounded-full ${s.dot}`} />
+                      {s.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Time */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">เวลาเข้า</label>
+                  <input type="time" value={bulkForm.check_in}
+                    onChange={e => setBulkForm(f => ({ ...f, check_in: e.target.value }))}
+                    className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">เวลาออก</label>
+                  <input type="time" value={bulkForm.check_out}
+                    onChange={e => setBulkForm(f => ({ ...f, check_out: e.target.value }))}
+                    className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400" />
+                </div>
+              </div>
+
+              {/* OT */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">OT (ชั่วโมง)</label>
+                  <input type="number" min="0" step="0.5" value={bulkForm.ot_hours || ''}
+                    onChange={e => setBulkForm(f => ({ ...f, ot_hours: Number(e.target.value) }))}
+                    placeholder="0"
+                    className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">ประเภท OT</label>
+                  <select value={bulkForm.ot_type} onChange={e => setBulkForm(f => ({ ...f, ot_type: e.target.value }))}
+                    className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400">
+                    <option value="normal">ปกติ (×1.5)</option>
+                    <option value="holiday">วันหยุด (×3)</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Note */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">หมายเหตุ</label>
+                <input type="text" value={bulkForm.note}
+                  onChange={e => setBulkForm(f => ({ ...f, note: e.target.value }))}
+                  placeholder="(ถ้ามี)"
+                  className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400" />
+              </div>
+
+              {/* Skip options */}
+              <div className="bg-gray-50 rounded-xl p-3 space-y-2">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">ข้ามวัน</p>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={bulkForm.skipWeekend}
+                    onChange={e => setBulkForm(f => ({ ...f, skipWeekend: e.target.checked }))}
+                    className="w-3.5 h-3.5 accent-violet-600" />
+                  <span className="text-sm text-gray-700">ข้ามเสาร์-อาทิตย์</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={bulkForm.skipHoliday}
+                    onChange={e => setBulkForm(f => ({ ...f, skipHoliday: e.target.checked }))}
+                    className="w-3.5 h-3.5 accent-violet-600" />
+                  <span className="text-sm text-gray-700">ข้ามวันหยุดบริษัท</span>
+                </label>
+              </div>
+
+            </div>
+            <div className="px-6 pb-6 flex gap-2">
+              <button onClick={applyBulk} disabled={bulkSaving}
+                className="flex-1 flex items-center justify-center gap-2 bg-violet-600 text-white py-3 rounded-xl text-sm font-bold hover:bg-violet-700 disabled:opacity-60">
+                <Save size={15} /> {bulkSaving ? 'กำลังบันทึก...' : 'บันทึกทั้งหมด'}
+              </button>
+              <button onClick={() => setShowBulk(false)}
+                className="flex-1 border border-gray-300 py-3 rounded-xl text-sm text-gray-600 hover:bg-gray-50">
+                ยกเลิก
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ─── Cell Editor Panel ─── */}
       {editCell && (() => {
