@@ -53,8 +53,11 @@ export default function HolidaysTab() {
 
   async function deleteHoliday(id: string) {
     if (!confirm('ลบวันหยุดนี้?')) return
-    await fetch(`/api/holidays/${id}`, { method: 'DELETE' })
-    load()
+    try {
+      const res = await fetch(`/api/holidays/${id}`, { method: 'DELETE' })
+      if (!res.ok) { const e = await res.json().catch(() => ({})); alert('ลบวันหยุดไม่สำเร็จ: ' + (e.error || res.status)); return }
+      load()
+    } catch { alert('เกิดข้อผิดพลาด ไม่สามารถลบวันหยุดได้') }
   }
 
   return (

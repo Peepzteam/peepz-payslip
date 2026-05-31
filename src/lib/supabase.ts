@@ -6,7 +6,6 @@ const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciO
 
 const DB_OPTIONS = {
   db: { schema: 'public' },
-  global: { headers: { 'Connection': 'keep-alive' } },
 }
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, DB_OPTIONS)

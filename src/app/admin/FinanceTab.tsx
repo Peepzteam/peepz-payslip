@@ -94,24 +94,30 @@ export default function FinanceTab() {
 
   const load = useCallback(async () => {
     setLoading(true)
-    const [incRes, expRes, allIncRes, allExpRes, payRes, allPayRes] = await Promise.all([
-      fetch(`/api/income-records?month=${month}&year=${year}`),
-      fetch(`/api/expense-records?month=${month}&year=${year}`),
-      fetch(`/api/income-records?year=${year}`),
-      fetch(`/api/expense-records?year=${year}`),
-      fetch(`/api/payslips?month=${month}&year=${year}`),
-      fetch(`/api/payslips?year=${year}`),
-    ])
-    const [inc, exp, allInc, allExp, pays, allPays] = await Promise.all([
-      incRes.json(), expRes.json(), allIncRes.json(), allExpRes.json(), payRes.json(), allPayRes.json()
-    ])
-    setIncomes(Array.isArray(inc) ? inc : [])
-    setExpenses(Array.isArray(exp) ? exp : [])
-    setAllIncomes(Array.isArray(allInc) ? allInc : [])
-    setAllExpenses(Array.isArray(allExp) ? allExp : [])
-    setPayslips(Array.isArray(pays) ? pays : [])
-    setAllPayslips(Array.isArray(allPays) ? allPays : [])
-    setLoading(false)
+    try {
+      const [incRes, expRes, allIncRes, allExpRes, payRes, allPayRes] = await Promise.all([
+        fetch(`/api/income-records?month=${month}&year=${year}`),
+        fetch(`/api/expense-records?month=${month}&year=${year}`),
+        fetch(`/api/income-records?year=${year}`),
+        fetch(`/api/expense-records?year=${year}`),
+        fetch(`/api/payslips?month=${month}&year=${year}`),
+        fetch(`/api/payslips?year=${year}`),
+      ])
+      const safeJson = async (r: Response) => { try { return await r.json() } catch { return [] } }
+      const [inc, exp, allInc, allExp, pays, allPays] = await Promise.all([
+        safeJson(incRes), safeJson(expRes), safeJson(allIncRes), safeJson(allExpRes), safeJson(payRes), safeJson(allPayRes)
+      ])
+      setIncomes(Array.isArray(inc) ? inc : [])
+      setExpenses(Array.isArray(exp) ? exp : [])
+      setAllIncomes(Array.isArray(allInc) ? allInc : [])
+      setAllExpenses(Array.isArray(allExp) ? allExp : [])
+      setPayslips(Array.isArray(pays) ? pays : [])
+      setAllPayslips(Array.isArray(allPays) ? allPays : [])
+    } catch (err) {
+      console.error('FinanceTab load error:', err)
+    } finally {
+      setLoading(false)
+    }
   }, [month, year])
 
   useEffect(() => { load() }, [load])
@@ -124,22 +130,28 @@ export default function FinanceTab() {
 
   async function addIncome() {
     if (!incomeForm.amount) return
-    await fetch('/api/income-records', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...incomeForm, amount: Number(incomeForm.amount), month, year }),
-    })
-    setIncomeForm({...EMPTY_INCOME, transaction_date: todayISO()})
-    setShowForm(null); load()
+    try {
+      const res = await fetch('/api/income-records', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...incomeForm, amount: Number(incomeForm.amount), month, year }),
+      })
+      if (!res.ok) { const e = await res.json().catch(() => ({})); alert('บันทึกรายรับไม่สำเร็จ: ' + (e.error || res.status)); return }
+      setIncomeForm({...EMPTY_INCOME, transaction_date: todayISO()})
+      setShowForm(null); load()
+    } catch { alert('เกิดข้อผิดพลาด ไม่สามารถบันทึกรายรับได้') }
   }
 
   async function addExpense() {
     if (!expenseForm.amount) return
-    await fetch('/api/expense-records', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...expenseForm, amount: Number(expenseForm.amount), month, year }),
-    })
-    setExpenseForm({...EMPTY_EXPENSE, transaction_date: todayISO()})
-    setShowForm(null); load()
+    try {
+      const res = await fetch('/api/expense-records', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...expenseForm, amount: Number(expenseForm.amount), month, year }),
+      })
+      if (!res.ok) { const e = await res.json().catch(() => ({})); alert('บันทึกรายจ่ายไม่สำเร็จ: ' + (e.error || res.status)); return }
+      setExpenseForm({...EMPTY_EXPENSE, transaction_date: todayISO()})
+      setShowForm(null); load()
+    } catch { alert('เกิดข้อผิดพลาด ไม่สามารถบันทึกรายจ่ายได้') }
   }
 
   function startEditIncome(r: IncomeRecord) {
@@ -150,12 +162,15 @@ export default function FinanceTab() {
   async function saveIncome() {
     if (!editingId) return
     setSaving(true)
-    const d = new Date(editIncomeForm.transaction_date + 'T00:00:00')
-    await fetch(`/api/income-records/${editingId}`, {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...editIncomeForm, amount: Number(editIncomeForm.amount), month: d.getMonth()+1, year: d.getFullYear() }),
-    })
-    setSaving(false); setEditingId(null); setEditType(null); load()
+    try {
+      const d = new Date(editIncomeForm.transaction_date + 'T00:00:00')
+      const res = await fetch(`/api/income-records/${editingId}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...editIncomeForm, amount: Number(editIncomeForm.amount), month: d.getMonth()+1, year: d.getFullYear() }),
+      })
+      if (!res.ok) { const e = await res.json().catch(() => ({})); alert('แก้ไขรายรับไม่สำเร็จ: ' + (e.error || res.status)); return }
+      setEditingId(null); setEditType(null); load()
+    } catch { alert('เกิดข้อผิดพลาด ไม่สามารถแก้ไขรายรับได้') } finally { setSaving(false) }
   }
 
   function startEditExpense(r: ExpenseRecord) {
@@ -166,21 +181,32 @@ export default function FinanceTab() {
   async function saveExpense() {
     if (!editingId) return
     setSaving(true)
-    const d = new Date(editExpenseForm.transaction_date + 'T00:00:00')
-    await fetch(`/api/expense-records/${editingId}`, {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...editExpenseForm, amount: Number(editExpenseForm.amount), month: d.getMonth()+1, year: d.getFullYear() }),
-    })
-    setSaving(false); setEditingId(null); setEditType(null); load()
+    try {
+      const d = new Date(editExpenseForm.transaction_date + 'T00:00:00')
+      const res = await fetch(`/api/expense-records/${editingId}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...editExpenseForm, amount: Number(editExpenseForm.amount), month: d.getMonth()+1, year: d.getFullYear() }),
+      })
+      if (!res.ok) { const e = await res.json().catch(() => ({})); alert('แก้ไขรายจ่ายไม่สำเร็จ: ' + (e.error || res.status)); return }
+      setEditingId(null); setEditType(null); load()
+    } catch { alert('เกิดข้อผิดพลาด ไม่สามารถแก้ไขรายจ่ายได้') } finally { setSaving(false) }
   }
 
   async function deleteIncome(id: string) {
     if (!confirm('ลบรายการนี้?')) return
-    await fetch(`/api/income-records/${id}`, { method: 'DELETE' }); load()
+    try {
+      const res = await fetch(`/api/income-records/${id}`, { method: 'DELETE' })
+      if (!res.ok) { const e = await res.json().catch(() => ({})); alert('ลบรายรับไม่สำเร็จ: ' + (e.error || res.status)); return }
+      load()
+    } catch { alert('เกิดข้อผิดพลาด ไม่สามารถลบรายรับได้') }
   }
   async function deleteExpense(id: string) {
     if (!confirm('ลบรายการนี้?')) return
-    await fetch(`/api/expense-records/${id}`, { method: 'DELETE' }); load()
+    try {
+      const res = await fetch(`/api/expense-records/${id}`, { method: 'DELETE' })
+      if (!res.ok) { const e = await res.json().catch(() => ({})); alert('ลบรายจ่ายไม่สำเร็จ: ' + (e.error || res.status)); return }
+      load()
+    } catch { alert('เกิดข้อผิดพลาด ไม่สามารถลบรายจ่ายได้') }
   }
 
   function navigate(dir: number) {

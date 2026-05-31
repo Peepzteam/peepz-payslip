@@ -90,31 +90,37 @@ export default function HRTab() {
 
   const load = useCallback(async () => {
     setLoading(true)
-    const [empRes, recRes, prevRecRes, payRes, prevPayRes, holRes] = await Promise.all([
-      fetch('/api/employees'),
-      fetch(`/api/work-records?month=${month}&year=${year}`),
-      fetch(`/api/work-records?month=${prevMonth}&year=${prevYear}`),
-      fetch(`/api/payslips?month=${month}&year=${year}`),
-      fetch(`/api/payslips?month=${prevMonth}&year=${prevYear}`),
-      fetch(`/api/holidays?year=${year}`),
-    ])
-    const [emps, recs, prevRecs, pays, prevPays, hols] = await Promise.all([
-      empRes.json(), recRes.json(), prevRecRes.json(), payRes.json(), prevPayRes.json(), holRes.json()
-    ])
-    const activeEmps: Employee[] = Array.isArray(emps) ? emps.filter((e: Employee) => e.is_active) : []
-    setEmployees(activeEmps)
-    // Default: fulltime selected, freelance unselected
-    setSelectedEmpIds(prev => {
-      if (prev.size > 0) return prev
-      const ids = new Set(activeEmps.filter(e => e.type === 'fulltime').map(e => e.id))
-      return ids
-    })
-    setRecords(Array.isArray(recs) ? recs : [])
-    setPrevRecords(Array.isArray(prevRecs) ? prevRecs : [])
-    setPayslips(Array.isArray(pays) ? pays : [])
-    setPrevPayslips(Array.isArray(prevPays) ? prevPays : [])
-    setHolidays(Array.isArray(hols) ? hols : [])
-    setLoading(false)
+    try {
+      const [empRes, recRes, prevRecRes, payRes, prevPayRes, holRes] = await Promise.all([
+        fetch('/api/employees'),
+        fetch(`/api/work-records?month=${month}&year=${year}`),
+        fetch(`/api/work-records?month=${prevMonth}&year=${prevYear}`),
+        fetch(`/api/payslips?month=${month}&year=${year}`),
+        fetch(`/api/payslips?month=${prevMonth}&year=${prevYear}`),
+        fetch(`/api/holidays?year=${year}`),
+      ])
+      const safeJson = async (r: Response) => { try { return await r.json() } catch { return [] } }
+      const [emps, recs, prevRecs, pays, prevPays, hols] = await Promise.all([
+        safeJson(empRes), safeJson(recRes), safeJson(prevRecRes), safeJson(payRes), safeJson(prevPayRes), safeJson(holRes)
+      ])
+      const activeEmps: Employee[] = Array.isArray(emps) ? emps.filter((e: Employee) => e.is_active) : []
+      setEmployees(activeEmps)
+      // Default: fulltime selected, freelance unselected
+      setSelectedEmpIds(prev => {
+        if (prev.size > 0) return prev
+        const ids = new Set(activeEmps.filter(e => e.type === 'fulltime').map(e => e.id))
+        return ids
+      })
+      setRecords(Array.isArray(recs) ? recs : [])
+      setPrevRecords(Array.isArray(prevRecs) ? prevRecs : [])
+      setPayslips(Array.isArray(pays) ? pays : [])
+      setPrevPayslips(Array.isArray(prevPays) ? prevPays : [])
+      setHolidays(Array.isArray(hols) ? hols : [])
+    } catch (err) {
+      console.error('HRTab load error:', err)
+    } finally {
+      setLoading(false)
+    }
   }, [month, year, prevMonth, prevYear])
 
   useEffect(() => { load() }, [load])
