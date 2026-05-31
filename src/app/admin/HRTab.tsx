@@ -239,6 +239,102 @@ export default function HRTab() {
     } catch (e) { alert('Export ไม่ได้: ' + String(e)) }
   }
 
+  async function exportEmployeePNG(empId: string) {
+    const emp = employees.find(e => e.id === empId)
+    if (!emp) return
+    try {
+      const html2canvas = (await import('html2canvas')).default
+      const daysInMonth = new Date(year, month, 0).getDate()
+      const days = Array.from({ length: daysInMonth }, (_, i) => i + 1)
+      const dayNames = ['อา','จ','อ','พ','พฤ','ศ','ส']
+      const monthNames = ['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม']
+      const holidayDates = new Set(
+        holidays.filter(h => { const d = new Date(h.date+'T00:00:00'); return d.getMonth()+1===month && d.getFullYear()===year }).map(h => new Date(h.date+'T00:00:00').getDate())
+      )
+      const statusLabel: Record<string,string> = {
+        present:'มาทำงาน', late:'มาสาย', absent:'ขาดงาน',
+        leave_sick:'ลาป่วย', leave_annual:'ลาพักร้อน', leave_personal:'ลากิจ', holiday:'วันหยุด'
+      }
+      const statusColor: Record<string,string> = {
+        present:'#d1fae5', late:'#fef9c3', absent:'#fee2e2',
+        leave_sick:'#dbeafe', leave_annual:'#ede9fe', leave_personal:'#ffedd5', holiday:'#f3f4f6'
+      }
+      const statusText: Record<string,string> = {
+        present:'#065f46', late:'#92400e', absent:'#991b1b',
+        leave_sick:'#1e40af', leave_annual:'#5b21b6', leave_personal:'#9a3412', holiday:'#6b7280'
+      }
+
+      // Build HTML
+      const rows = days.map(d => {
+        const dateStr = `${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`
+        const key = `${empId}_${dateStr}`
+        const rec = edits[key] || records.find(r => r.employee_id === empId && r.date === dateStr) || {}
+        const dow = new Date(year, month-1, d).getDay()
+        const isWeekend = dow === 0 || dow === 6
+        const isHol = holidayDates.has(d)
+        const bg = isWeekend ? '#fff1f2' : isHol ? '#fffbeb' : '#ffffff'
+        const st = rec.status as string | undefined
+        const badge = st ? `<span style="background:${statusColor[st]||'#f3f4f6'};color:${statusText[st]||'#374151'};padding:2px 8px;border-radius:9999px;font-size:11px;font-weight:600;">${statusLabel[st]||st}</span>` : '<span style="color:#d1d5db;font-size:11px;">—</span>'
+        const time = (rec.check_in || rec.check_out) ? `<div style="font-size:10px;color:#6b7280;margin-top:2px;">${rec.check_in||''}${rec.check_in&&rec.check_out?' – ':''}${rec.check_out||''}</div>` : ''
+        const ot = Number(rec.ot_hours) > 0 ? `<div style="font-size:10px;color:#4f46e5;font-weight:600;">OT ${rec.ot_hours}h</div>` : ''
+        return `<tr style="background:${bg};">
+          <td style="padding:6px 10px;border-bottom:1px solid #f3f4f6;font-weight:600;color:#374151;width:40px;text-align:center;">${d}</td>
+          <td style="padding:6px 10px;border-bottom:1px solid #f3f4f6;color:#9ca3af;width:30px;text-align:center;">${dayNames[dow]}</td>
+          <td style="padding:6px 10px;border-bottom:1px solid #f3f4f6;">${badge}${time}</td>
+          <td style="padding:6px 10px;border-bottom:1px solid #f3f4f6;text-align:right;">${ot}</td>
+        </tr>`
+      }).join('')
+
+      const presentCount = days.filter(d => { const dateStr=`${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`; const k=`${empId}_${dateStr}`; const r=edits[k]||records.find(x=>x.employee_id===empId&&x.date===dateStr)||{}; return r.status==='present'||r.status==='late' }).length
+      const otTotal = days.reduce((s,d) => { const dateStr=`${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`; const k=`${empId}_${dateStr}`; const r=edits[k]||records.find(x=>x.employee_id===empId&&x.date===dateStr)||{}; return s+Number(r.ot_hours||0) }, 0)
+
+      const html = `<div style="font-family:system-ui,-apple-system,sans-serif;background:#f9fafb;padding:24px;width:500px;">
+        <div style="background:white;border-radius:16px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
+          <div style="background:linear-gradient(135deg,#4f46e5,#7c3aed);padding:20px 24px;">
+            <div style="color:white;font-size:18px;font-weight:700;">${emp.name}</div>
+            <div style="color:rgba(255,255,255,0.7);font-size:13px;margin-top:4px;">${emp.employee_code} · ${emp.type==='freelance'?'Freelance':'พนักงานประจำ'}</div>
+            <div style="color:rgba(255,255,255,0.9);font-size:14px;margin-top:8px;font-weight:600;">${monthNames[month-1]} ${year+543}</div>
+          </div>
+          <div style="display:flex;gap:0;border-bottom:2px solid #e5e7eb;">
+            <div style="flex:1;padding:12px 16px;text-align:center;border-right:1px solid #e5e7eb;">
+              <div style="font-size:22px;font-weight:700;color:#059669;">${presentCount}</div>
+              <div style="font-size:11px;color:#6b7280;">วันเข้างาน</div>
+            </div>
+            <div style="flex:1;padding:12px 16px;text-align:center;">
+              <div style="font-size:22px;font-weight:700;color:#4f46e5;">${otTotal}</div>
+              <div style="font-size:11px;color:#6b7280;">ชม. OT</div>
+            </div>
+          </div>
+          <table style="width:100%;border-collapse:collapse;">
+            <thead>
+              <tr style="background:#f9fafb;">
+                <th style="padding:8px 10px;font-size:11px;color:#6b7280;font-weight:600;text-align:center;">วัน</th>
+                <th style="padding:8px 10px;font-size:11px;color:#6b7280;font-weight:600;text-align:center;">วันที่</th>
+                <th style="padding:8px 10px;font-size:11px;color:#6b7280;font-weight:600;text-align:left;">สถานะ</th>
+                <th style="padding:8px 10px;font-size:11px;color:#6b7280;font-weight:600;text-align:right;">OT</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      </div>`
+
+      const container = document.createElement('div')
+      container.style.cssText = 'position:fixed;top:-9999px;left:-9999px;'
+      container.innerHTML = html
+      document.body.appendChild(container)
+      const canvas = await html2canvas(container.firstElementChild as HTMLElement, { scale: 2, backgroundColor: '#f9fafb', useCORS: true, logging: false })
+      document.body.removeChild(container)
+      const url = canvas.toDataURL('image/png')
+      const link = document.createElement('a')
+      link.download = `${emp.name}-${monthNames[month-1]}-${year+543}.png`
+      link.href = url
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+    } catch (e) { alert('Export ไม่ได้: ' + String(e)) }
+  }
+
   function calcStats(recs: WorkRecord[]) {
     return {
       present: recs.filter(r => r.status === 'present').length,
@@ -388,6 +484,7 @@ export default function HRTab() {
           <AttendanceGrid
             employees={shownEmployees} days={days} year={year} month={month}
             getRecord={getRecord} openCell={openCell} holidays={holidays}
+            onExportEmployee={exportEmployeePNG}
           />
         )}
         </div>
@@ -791,7 +888,7 @@ function DashboardView({ month, year, prevMonth, prevYear, stats, prevStats, dif
 }
 
 // ─── Attendance Grid ──────────────────────────────────────────────────────────
-function AttendanceGrid({ employees, days, year, month, getRecord, openCell, holidays }: {
+function AttendanceGrid({ employees, days, year, month, getRecord, openCell, holidays, onExportEmployee }: {
   employees: Employee[]
   days: number[]
   year: number
@@ -799,6 +896,7 @@ function AttendanceGrid({ employees, days, year, month, getRecord, openCell, hol
   getRecord: (empId: string, day: number) => Partial<WorkRecord>
   openCell: (empId: string, day: number) => void
   holidays: CompanyHoliday[]
+  onExportEmployee: (empId: string) => void
 }) {
   const dateOf = (d: number) => new Date(year, month - 1, d)
   const isWeekend = (d: number) => [0, 6].includes(dateOf(d).getDay())
@@ -852,8 +950,16 @@ function AttendanceGrid({ employees, days, year, month, getRecord, openCell, hol
             return (
               <tr key={emp.id} className={ei % 2 === 0 ? 'bg-white' : 'bg-gray-50/40'}>
                 <td className={`sticky left-0 z-10 px-4 py-3 border-r border-gray-200 ${ei % 2 === 0 ? 'bg-white' : 'bg-gray-50/60'}`}>
-                  <p className="font-semibold text-gray-800 leading-tight">{emp.name}</p>
-                  <p className="text-gray-400 text-xs">{emp.employee_code}</p>
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <p className="font-semibold text-gray-800 leading-tight">{emp.name}</p>
+                      <p className="text-gray-400 text-xs">{emp.employee_code}</p>
+                    </div>
+                    <button onClick={() => onExportEmployee(emp.id)} title="บันทึก PNG"
+                      className="shrink-0 p-1 text-gray-300 hover:text-indigo-500 hover:bg-indigo-50 rounded transition">
+                      <Download size={13} />
+                    </button>
+                  </div>
                 </td>
                 {days.map(d => {
                   const rec = getRecord(emp.id, d)
