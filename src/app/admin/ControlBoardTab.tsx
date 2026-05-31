@@ -75,8 +75,8 @@ export default function ControlBoardTab() {
   const [expenseRecs, setExpenseRecs] = useState<{month:number;category:string;amount:number}[]>([])
 
   // Campaign form
-  type CampForm = { client_name:string; client_type:'new'|'existing'; service_type:string; campaign_name:string; revenue:string; cost:string; note:string; month:number }
-  const EMPTY_C: CampForm = { client_name:'', client_type:'new', service_type:'live', campaign_name:'', revenue:'', cost:'', note:'', month: now.getMonth()+1 }
+  type CampForm = { client_name:string; client_type:'new'|'existing'; service_type:string; campaign_name:string; revenue:string; profit:string; note:string; month:number }
+  const EMPTY_C: CampForm = { client_name:'', client_type:'new', service_type:'live', campaign_name:'', revenue:'', profit:'', note:'', month: now.getMonth()+1 }
   const [showCampForm, setShowCampForm] = useState(false)
   const [campForm, setCampForm] = useState({...EMPTY_C})
   const [campSaving, setCampSaving] = useState(false)
@@ -190,11 +190,13 @@ export default function ControlBoardTab() {
   async function addCampaign() {
     if (!campForm.client_name || !campForm.revenue) { alert('กรอกชื่อลูกค้าและยอดขายด้วยนะคะ'); return }
     setCampSaving(true)
+    const revenue = Number(campForm.revenue) || 0
+    const profit  = Number(campForm.profit)  || 0
     const payload = {
       year, month: Number(campForm.month),
       client_name: campForm.client_name, client_type: campForm.client_type,
       service_type: campForm.service_type, campaign_name: campForm.campaign_name || null,
-      revenue: Number(campForm.revenue) || 0, cost: Number(campForm.cost) || 0,
+      revenue, cost: revenue - profit,   // DB ยังเก็บ cost แต่ UI ให้กรอก กำไร
       note: campForm.note || null,
     }
     // Optimistic add
@@ -413,8 +415,8 @@ export default function ControlBoardTab() {
                 className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"/>
             </div>
             <div>
-              <label className="text-xs text-gray-500 mb-1 block">ต้นทุน (บาท)</label>
-              <input type="number" value={campForm.cost} onChange={e=>setCampForm({...campForm,cost:e.target.value})}
+              <label className="text-xs text-gray-500 mb-1 block">กำไร (บาท)</label>
+              <input type="number" value={campForm.profit} onChange={e=>setCampForm({...campForm,profit:e.target.value})}
                 placeholder="0"
                 className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"/>
             </div>
