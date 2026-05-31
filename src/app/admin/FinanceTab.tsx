@@ -396,39 +396,64 @@ export default function FinanceTab() {
                     // Payroll row (read-only)
                     if (row.kind === 'payroll') {
                       const p = row.rec as PayslipRecord
+                      const isFreelance = p.employee?.type === 'freelance'
                       const dateStr = p.transfer_date
+                      const borderColor = isFreelance ? 'border-l-amber-400' : 'border-l-indigo-400'
+                      const hoverBg = isFreelance ? 'hover:bg-amber-50/30' : 'hover:bg-indigo-50/20'
+                      const badgeCls = isFreelance
+                        ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                        : 'bg-indigo-50 text-indigo-700 border border-indigo-200'
+                      const amtColor = isFreelance ? 'text-amber-600' : 'text-indigo-600'
                       return (
-                        <tr key={p.id} className="border-l-2 border-l-indigo-300 hover:bg-indigo-50/20 group transition">
+                        <tr key={p.id} className={`border-l-2 ${borderColor} ${hoverBg} group transition`}>
                           <td className="px-4 py-2.5 text-center text-gray-400 text-xs">{idx + 1}</td>
                           <td className="px-4 py-2.5 text-gray-500 text-xs whitespace-nowrap">
                             {dateStr ? formatDateShort(dateStr) : <span className="text-gray-300">—</span>}
                           </td>
                           <td className="px-4 py-2.5">
                             <p className="font-medium text-gray-800 leading-tight">{p.employee?.name ?? '—'}</p>
-                            <p className="text-xs text-gray-400">
-                              เงินเดือน {formatCurrency(p.base_salary)}
-                              {p.ot_amount > 0 && ` + OT ${formatCurrency(p.ot_amount)}`}
-                              {p.incentive > 0 && ` + Incentive ${formatCurrency(p.incentive)}`}
-                              {p.social_security > 0 && ` − ประกันสังคม ${formatCurrency(p.social_security)}`}
-                              {p.withholding_tax > 0 && ` − ภาษี ${formatCurrency(p.withholding_tax)}`}
-                            </p>
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {p.base_salary > 0 && (
+                                <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
+                                  เงินเดือน {formatCurrency(p.base_salary)}
+                                </span>
+                              )}
+                              {p.ot_amount > 0 && (
+                                <span className="text-xs px-2 py-0.5 rounded-full bg-orange-100 text-orange-700">
+                                  OT {formatCurrency(p.ot_amount)}
+                                </span>
+                              )}
+                              {p.incentive > 0 && (
+                                <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700">
+                                  Incentive {formatCurrency(p.incentive)}
+                                </span>
+                              )}
+                              {p.social_security > 0 && (
+                                <span className="text-xs px-2 py-0.5 rounded-full bg-red-50 text-red-500">
+                                  −ประกันสังคม {formatCurrency(p.social_security)}
+                                </span>
+                              )}
+                              {p.withholding_tax > 0 && (
+                                <span className="text-xs px-2 py-0.5 rounded-full bg-red-50 text-red-500">
+                                  −ภาษี {formatCurrency(p.withholding_tax)}
+                                </span>
+                              )}
+                            </div>
                           </td>
                           <td className="px-4 py-2.5">
-                            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600">
-                              👥 {p.employee?.type === 'freelance' ? 'Freelance' : 'เงินเดือน'}
+                            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${badgeCls}`}>
+                              {isFreelance ? '🎨 Freelance' : '👤 พนักงานประจำ'}
                             </span>
-                            <span className="ml-1 text-xs text-gray-300">(สลิป)</span>
+                            <p className="text-xs text-gray-300 mt-0.5">จากสลิป</p>
                           </td>
                           <td className="px-4 py-2.5 text-right"></td>
-                          <td className="px-4 py-2.5 text-right font-semibold text-indigo-600 whitespace-nowrap">
+                          <td className={`px-4 py-2.5 text-right font-semibold whitespace-nowrap ${amtColor}`}>
                             {formatCurrency(Number(p.net_pay))}
                           </td>
                           <td className={`px-4 py-2.5 text-right font-bold whitespace-nowrap ${row.balance >= 0 ? 'text-indigo-600' : 'text-red-500'}`}>
                             {formatCurrency(row.balance)}
                           </td>
-                          <td className="px-2 py-2.5 text-center">
-                            <span className="text-xs text-gray-300 opacity-0 group-hover:opacity-100">จากสลิป</span>
-                          </td>
+                          <td className="px-2 py-2.5" />
                         </tr>
                       )
                     }
@@ -494,14 +519,32 @@ export default function FinanceTab() {
                   })}
                 </tbody>
                 <tfoot className="border-t-2 border-gray-200">
-                  {payslips.length > 0 && (
-                    <tr className="bg-indigo-50/50 text-xs text-indigo-600">
-                      <td colSpan={4} className="px-4 py-2 font-medium">👥 เงินเดือนพนักงาน (จากสลิป {payslips.length} คน)</td>
-                      <td></td>
-                      <td className="px-4 py-2 text-right font-semibold">{formatCurrency(totalPayroll)}</td>
-                      <td colSpan={2}></td>
-                    </tr>
-                  )}
+                  {payslips.length > 0 && (() => {
+                    const ftSlips = payslips.filter(p => p.employee?.type !== 'freelance')
+                    const flSlips = payslips.filter(p => p.employee?.type === 'freelance')
+                    const ftTotal = ftSlips.reduce((s, p) => s + Number(p.net_pay), 0)
+                    const flTotal = flSlips.reduce((s, p) => s + Number(p.net_pay), 0)
+                    return (
+                      <>
+                        {ftSlips.length > 0 && (
+                          <tr className="bg-indigo-50/40 text-xs">
+                            <td colSpan={4} className="px-4 py-1.5 text-indigo-600 font-medium">👤 พนักงานประจำ ({ftSlips.length} คน) — จากสลิป</td>
+                            <td></td>
+                            <td className="px-4 py-1.5 text-right font-semibold text-indigo-600">{formatCurrency(ftTotal)}</td>
+                            <td colSpan={2}></td>
+                          </tr>
+                        )}
+                        {flSlips.length > 0 && (
+                          <tr className="bg-amber-50/40 text-xs">
+                            <td colSpan={4} className="px-4 py-1.5 text-amber-600 font-medium">🎨 Freelance ({flSlips.length} คน) — จากสลิป</td>
+                            <td></td>
+                            <td className="px-4 py-1.5 text-right font-semibold text-amber-600">{formatCurrency(flTotal)}</td>
+                            <td colSpan={2}></td>
+                          </tr>
+                        )}
+                      </>
+                    )
+                  })()}
                   <tr className="bg-gray-50 font-semibold text-sm">
                     <td colSpan={4} className="px-4 py-3 text-gray-600">รวมทั้งหมด</td>
                     <td className="px-4 py-3 text-right text-emerald-600">{formatCurrency(totalIncome)}</td>
@@ -607,11 +650,16 @@ function YearView({ data, year, yearTotal, allIncomes, allExpenses, allPayslips,
   setYear: (y: number) => void
   onClickMonth: (m: number) => void
 }) {
-  // Payroll by month
-  const payrollByMonth = Array.from({ length: 12 }, (_, i) =>
-    allPayslips.filter(p => p.period_month === i+1).reduce((s, p) => s + Number(p.net_pay), 0)
+  // Payroll by month — split by type
+  const fulltimeByMonth = Array.from({ length: 12 }, (_, i) =>
+    allPayslips.filter(p => p.period_month === i+1 && p.employee?.type !== 'freelance').reduce((s, p) => s + Number(p.net_pay), 0)
   )
-  const totalPayrollYear = payrollByMonth.reduce((s, v) => s + v, 0)
+  const freelanceByMonth = Array.from({ length: 12 }, (_, i) =>
+    allPayslips.filter(p => p.period_month === i+1 && p.employee?.type === 'freelance').reduce((s, p) => s + Number(p.net_pay), 0)
+  )
+  const totalFtYear = fulltimeByMonth.reduce((s, v) => s + v, 0)
+  const totalFlYear = freelanceByMonth.reduce((s, v) => s + v, 0)
+  const totalPayrollYear = totalFtYear + totalFlYear
   // Income by source × month
   const incBySource = INCOME_SOURCES.map(src => ({
     ...src,
@@ -716,17 +764,29 @@ function YearView({ data, year, yearTotal, allIncomes, allExpenses, allPayslips,
                 <td className="px-4 py-2.5 text-right font-bold text-rose-600">{formatCurrency(cat.total)}</td>
               </tr>
             ))}
-            {/* Payroll auto row */}
-            {totalPayrollYear > 0 && (
+            {/* Payroll auto rows — split by type */}
+            {totalFtYear > 0 && (
               <tr className="hover:bg-indigo-50/30 border-b border-gray-50">
                 <td className="sticky left-0 bg-white px-4 py-2.5 border-r border-gray-100">
-                  <span className="font-medium text-indigo-600">👥 เงินเดือน (สลิป)</span>
+                  <span className="font-medium text-indigo-600">👤 พนักงานประจำ (สลิป)</span>
                   <span className="text-xs text-gray-400 ml-1">auto</span>
                 </td>
-                {payrollByMonth.map((v, i) => (
+                {fulltimeByMonth.map((v, i) => (
                   <td key={i} className={`px-3 py-2.5 text-right ${v > 0 ? 'text-indigo-600 font-medium' : 'text-gray-300'}`}>{fmt(v)}</td>
                 ))}
-                <td className="px-4 py-2.5 text-right font-bold text-indigo-600">{formatCurrency(totalPayrollYear)}</td>
+                <td className="px-4 py-2.5 text-right font-bold text-indigo-600">{formatCurrency(totalFtYear)}</td>
+              </tr>
+            )}
+            {totalFlYear > 0 && (
+              <tr className="hover:bg-amber-50/30 border-b border-gray-50">
+                <td className="sticky left-0 bg-white px-4 py-2.5 border-r border-gray-100">
+                  <span className="font-medium text-amber-600">🎨 Freelance (สลิป)</span>
+                  <span className="text-xs text-gray-400 ml-1">auto</span>
+                </td>
+                {freelanceByMonth.map((v, i) => (
+                  <td key={i} className={`px-3 py-2.5 text-right ${v > 0 ? 'text-amber-600 font-medium' : 'text-gray-300'}`}>{fmt(v)}</td>
+                ))}
+                <td className="px-4 py-2.5 text-right font-bold text-amber-600">{formatCurrency(totalFlYear)}</td>
               </tr>
             )}
 
