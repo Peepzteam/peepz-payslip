@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useState, useCallback } from 'react'
 import { formatCurrency } from '@/lib/utils'
-import { Plus, Trash2, ChevronLeft, ChevronRight, TrendingUp, TrendingDown, Wallet, X, Pencil, Check } from 'lucide-react'
+import { Plus, Trash2, ChevronLeft, ChevronRight, TrendingUp, TrendingDown, Wallet, X, Pencil, Check, Download } from 'lucide-react'
 
 interface IncomeRecord {
   id: string; month: number; year: number
@@ -265,6 +265,33 @@ export default function FinanceTab() {
     return { ...row, balance: running }
   })
 
+  function exportCSV() {
+    const rows: string[][] = [['#', 'วันที่', 'รายการ / ลูกค้า', 'หมวด', 'ยอดรับ', 'ยอดจ่าย', 'คงเหลือ']]
+    ledgerWithBalance.forEach((row, idx) => {
+      if (row.kind === 'payroll') {
+        const p = row.rec as PayslipRecord
+        rows.push([String(idx+1), p.transfer_date ?? '', p.employee?.name ?? p.guest_name ?? '—',
+          isPayslipFreelance(p) ? 'Freelance (สลิป)' : 'พนักงานประจำ (สลิป)',
+          '', String(p.net_pay), String(row.balance)])
+      } else if (row.kind === 'income') {
+        const r = row.rec as IncomeRecord
+        rows.push([String(idx+1), r.transaction_date ?? '',
+          [r.client_name, r.description].filter(Boolean).join(' - '), 'รายรับ',
+          String(r.amount), '', String(row.balance)])
+      } else {
+        const r = row.rec as ExpenseRecord
+        rows.push([String(idx+1), r.transaction_date ?? '', r.description ?? '',
+          catMeta(r.category).label, '', String(r.amount), String(row.balance)])
+      }
+    })
+    const csv = '﻿' + rows.map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n')
+    const a = Object.assign(document.createElement('a'), {
+      href: URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' })),
+      download: `การเงิน_${MONTHS[month-1]}_${year+543}.csv`
+    })
+    document.body.appendChild(a); a.click(); document.body.removeChild(a)
+  }
+
   const yearlyData = Array.from({ length: 12 }, (_, i) => {
     const m = i + 1
     const manualExp = allExpenses.filter(r => r.month === m).reduce((s, r) => s + Number(r.amount), 0)
@@ -314,6 +341,10 @@ export default function FinanceTab() {
               <button onClick={() => setShowForm(showForm === 'expense' ? null : 'expense')}
                 className="flex items-center gap-1.5 bg-rose-500 text-white px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-rose-600 shadow-sm">
                 <Plus size={13} /> รายจ่าย
+              </button>
+              <button onClick={exportCSV}
+                className="flex items-center gap-1.5 border border-gray-300 text-gray-600 px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-gray-50">
+                <Download size={13} /> Export CSV
               </button>
             </>
           )}
@@ -451,7 +482,7 @@ export default function FinanceTab() {
                             {dateStr ? formatDateShort(dateStr) : <span className="text-gray-300">—</span>}
                           </td>
                           <td className="px-4 py-2.5">
-                            <p className="font-medium text-gray-800 leading-tight">{p.employee?.name ?? '—'}</p>
+                            <p className="font-medium text-gray-800 leading-tight">{p.employee?.name ?? p.guest_name ?? '—'}</p>
                             <div className="flex flex-wrap gap-1 mt-1">
                               {p.base_salary > 0 && (
                                 <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
@@ -481,10 +512,10 @@ export default function FinanceTab() {
                             </div>
                           </td>
                           <td className="px-4 py-2.5">
-                            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${badgeCls}`}>
+                            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full whitespace-nowrap inline-block ${badgeCls}`}>
                               {isFreelance ? '🎨 Freelance' : '👤 พนักงานประจำ'}
                             </span>
-                            <p className="text-xs text-gray-300 mt-0.5">จากสลิป</p>
+                            <p className="text-xs text-gray-300 mt-0.5 whitespace-nowrap">จากสลิป</p>
                           </td>
                           <td className="px-4 py-2.5 text-right"></td>
                           <td className={`px-4 py-2.5 text-right font-semibold whitespace-nowrap ${amtColor}`}>
@@ -530,11 +561,11 @@ export default function FinanceTab() {
                         </td>
                         <td className="px-4 py-2.5">
                           {erec ? (
-                            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${catMeta(erec.category).bg} ${catMeta(erec.category).color}`}>
+                            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full whitespace-nowrap inline-block ${catMeta(erec.category).bg} ${catMeta(erec.category).color}`}>
                               {catMeta(erec.category).label}
                             </span>
                           ) : (
-                            <span className="text-xs text-emerald-600 font-medium">รายรับ</span>
+                            <span className="text-xs text-emerald-600 font-medium whitespace-nowrap">รายรับ</span>
                           )}
                         </td>
                         <td className="px-4 py-2.5 text-right font-semibold text-emerald-600 whitespace-nowrap">
