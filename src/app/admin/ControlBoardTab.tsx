@@ -152,9 +152,24 @@ export default function ControlBoardTab() {
   function financeExp(cat: string, m: number) {
     // map control-board category keys → Finance expense_records categories
     const catMap: Record<string,string> = {
+      // Office & System
       office_rent:     'rent',
       office_utils:    'utilities',
       office_software: 'software',
+      office_domain:   'domain',
+      office_equip:    'equipment',
+      // Team & Culture
+      team_food:       'team_food',
+      team_outing:     'team_outing',
+      team_party:      'team_party',
+      team_snack:      'team_snack',
+      team_birthday:   'team_birthday',
+      team_welcome:    'team_welcome',
+      team_activity:   'team_activity',
+      // Marketing
+      mkt_ads:         'ads',
+      mkt_ops:         'marketing_ops',
+      // Tax
       tax_vat_wht:     'tax',
     }
     const finCat = catMap[cat]
@@ -162,7 +177,11 @@ export default function ControlBoardTab() {
     return expenseRecs.filter(r => r.month === m && r.category === finCat).reduce((s,r) => s+r.amount, 0)
   }
   // Categories that are auto-synced from Finance tab (read-only in control board)
-  const FINANCE_SYNCED = new Set(['office_rent','office_utils','office_software','tax_vat_wht'])
+  const FINANCE_SYNCED = new Set([
+    'office_rent','office_utils','office_software','office_domain','office_equip',
+    'team_food','team_outing','team_party','team_snack','team_birthday','team_welcome','team_activity',
+    'mkt_ads','mkt_ops','tax_vat_wht',
+  ])
 
   // ─── Campaign aggregations ───
   function campsForMonth(m: number, type?: 'new'|'existing') {

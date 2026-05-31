@@ -57,14 +57,29 @@ const INCOME_SOURCES = [
 ]
 
 const EXPENSE_CATEGORIES = [
-  { val: 'salary',     label: '👥 เงินเดือน',         color: 'text-indigo-600', bg: 'bg-indigo-50' },
-  { val: 'freelance',  label: '🎨 Freelance',          color: 'text-amber-600',  bg: 'bg-amber-50' },
-  { val: 'petty_cash', label: '💼 Petty Cash',         color: 'text-orange-600', bg: 'bg-orange-50' },
-  { val: 'tax',        label: '🏛️ ภาษี',              color: 'text-red-600',    bg: 'bg-red-50' },
-  { val: 'rent',       label: '🏠 ค่าเช่า',            color: 'text-teal-600',   bg: 'bg-teal-50' },
-  { val: 'utilities',  label: '⚡ สาธารณูปโภค',        color: 'text-cyan-600',   bg: 'bg-cyan-50' },
-  { val: 'software',   label: '💻 Software',           color: 'text-violet-600', bg: 'bg-violet-50' },
-  { val: 'other',      label: '📦 อื่นๆ',             color: 'text-gray-600',   bg: 'bg-gray-50' },
+  // 🏢 Office & System — ตรงกับ Control Board
+  { val: 'rent',           label: '🏠 ค่าเช่าออฟฟิศ',                        color: 'text-teal-600',   bg: 'bg-teal-50',   group: 'Office' },
+  { val: 'utilities',      label: '⚡ ค่าน้ำ / ไฟ / อินเทอร์เน็ต',           color: 'text-cyan-600',   bg: 'bg-cyan-50',   group: 'Office' },
+  { val: 'software',       label: '💻 ค่า Software (Canva, Google, ChatGPT ฯลฯ)', color: 'text-violet-600', bg: 'bg-violet-50', group: 'Office' },
+  { val: 'domain',         label: '🌐 ค่า Domain / Website / Hosting',        color: 'text-blue-600',   bg: 'bg-blue-50',   group: 'Office' },
+  { val: 'equipment',      label: '🖥️ ค่าอุปกรณ์สำนักงาน / จิปาถะ',          color: 'text-sky-600',    bg: 'bg-sky-50',    group: 'Office' },
+  // 🎉 Team & Culture — ตรงกับ Control Board
+  { val: 'team_food',      label: '🍽️ ค่าเลี้ยงข้าวพนักงาน',                 color: 'text-pink-600',   bg: 'bg-pink-50',   group: 'Team' },
+  { val: 'team_outing',    label: '🏕️ ค่า Outing / Team building',           color: 'text-rose-600',   bg: 'bg-rose-50',   group: 'Team' },
+  { val: 'team_party',     label: '🎉 ค่า Party บริษัท / Celebration',        color: 'text-fuchsia-600',bg: 'bg-fuchsia-50',group: 'Team' },
+  { val: 'team_snack',     label: '🧃 ค่า Snack / เครื่องดื่มในออฟฟิศ',      color: 'text-orange-500', bg: 'bg-orange-50', group: 'Team' },
+  { val: 'team_birthday',  label: '🎂 ค่า Birthday / Gift พนักงาน',           color: 'text-pink-500',   bg: 'bg-pink-50',   group: 'Team' },
+  { val: 'team_welcome',   label: '🤝 ค่า Welcome / Farewell พนักงาน',        color: 'text-emerald-600',bg: 'bg-emerald-50',group: 'Team' },
+  { val: 'team_activity',  label: '🎯 ค่า Internal Activity',                 color: 'text-lime-600',   bg: 'bg-lime-50',   group: 'Team' },
+  // 📢 Marketing
+  { val: 'ads',            label: '📢 ค่าโฆษณา (Ads)',                       color: 'text-orange-600', bg: 'bg-orange-50', group: 'Marketing' },
+  { val: 'marketing_ops',  label: '🛠️ ค่า Marketing Operations',              color: 'text-yellow-600', bg: 'bg-yellow-50', group: 'Marketing' },
+  // 💼 เงินเดือน / ภาษี / อื่น
+  { val: 'salary',         label: '👥 เงินเดือนพนักงาน',                      color: 'text-indigo-600', bg: 'bg-indigo-50', group: 'HR' },
+  { val: 'freelance',      label: '🎨 ค่าจ้าง Freelance',                     color: 'text-amber-600',  bg: 'bg-amber-50',  group: 'HR' },
+  { val: 'tax',            label: '🏛️ ภาษี VAT / WHT / อื่นๆ',              color: 'text-red-600',    bg: 'bg-red-50',    group: 'Tax' },
+  { val: 'petty_cash',     label: '💼 Petty Cash',                            color: 'text-orange-600', bg: 'bg-orange-50', group: 'Other' },
+  { val: 'other',          label: '📦 อื่นๆ',                                color: 'text-gray-600',   bg: 'bg-gray-50',   group: 'Other' },
 ]
 
 const MONTHS = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.']
@@ -80,7 +95,7 @@ function todayISO() {
 }
 
 const EMPTY_INCOME = { amount: '', sources: [] as string[], client_name: '', description: '', note: '', transaction_date: todayISO() }
-const EMPTY_EXPENSE = { category: 'petty_cash', amount: '', description: '', note: '', transaction_date: todayISO() }
+const EMPTY_EXPENSE = { category: 'rent', amount: '', description: '', note: '', transaction_date: todayISO() }
 
 export default function FinanceTab() {
   const now = new Date()
@@ -691,7 +706,16 @@ function ExpenseFormFields({ form, setForm }: {
       <div>
         <label className="block text-xs font-medium text-gray-600 mb-1">หมวดหมู่ *</label>
         <select value={form.category} onChange={e => setForm({...form, category: e.target.value})} className={cls}>
-          {EXPENSE_CATEGORIES.map(c => <option key={c.val} value={c.val}>{c.label}</option>)}
+          {(['Office','Team','Marketing','HR','Tax','Other'] as const).map(grp => {
+            const items = EXPENSE_CATEGORIES.filter(c => c.group === grp)
+            if (!items.length) return null
+            const grpLabel: Record<string,string> = { Office:'🏢 Office & System', Team:'🎉 Team & Culture', Marketing:'📢 Marketing', HR:'👥 เงินเดือน / HR', Tax:'🏛️ ภาษี', Other:'📦 อื่นๆ' }
+            return (
+              <optgroup key={grp} label={grpLabel[grp]}>
+                {items.map(c => <option key={c.val} value={c.val}>{c.label}</option>)}
+              </optgroup>
+            )
+          })}
         </select>
       </div>
       <div>
