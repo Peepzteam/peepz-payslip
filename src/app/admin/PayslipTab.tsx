@@ -100,12 +100,14 @@ export default function PayslipTab() {
       )
     : null
 
+  // Auto-calc WHT 3% ทุกครั้งที่ยอดรายได้เปลี่ยน
   useEffect(() => {
-    if (!isFreelance) return
-    const tax = String(Math.round(lineItemsTotal * 0.03 * 100) / 100)
-    setForm((prev) => ({ ...prev, withholding_tax: tax }))
+    if (editingPayslip) return // ไม่ override ตอน edit
+    const gross = isFreelance ? lineItemsTotal : grossIncome
+    const wht = Math.round(gross * 0.03)
+    setForm((prev) => ({ ...prev, withholding_tax: String(wht) }))
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lineItemsTotal, isFreelance])
+  }, [grossIncome, lineItemsTotal, isFreelance])
 
   useEffect(() => {
     fetch('/api/employees').then((r) => r.json()).then((d) => setEmployees(Array.isArray(d) ? d : []))
@@ -118,16 +120,12 @@ export default function PayslipTab() {
     const salary = selectedEmployee.base_salary || 0
     const ss = calcSocialSecurity(salary, isOwner, isFree)
     // คำนวณภาษีหัก ณ ที่จ่ายเบื้องต้น
-    const taxPreview = !isFree && !isOwner && salary > 0
-      ? calculateTax(salary, 0, 0, ss)
-      : null
+    const wht = Math.round(salary * 0.03)
     setForm((prev) => ({
       ...prev,
       base_salary: selectedEmployee.base_salary?.toString() || prev.base_salary,
       social_security: String(ss),
-      withholding_tax: isFree
-        ? String(Math.round((Number(prev.incentive) || 0) * 0.03 * 100) / 100)
-        : String(taxPreview?.monthlyTax ?? 0),
+      withholding_tax: String(wht),
     }))
     if (isFree) setLineItems([{ ...EMPTY_LINE }])
   // eslint-disable-next-line react-hooks/exhaustive-deps
