@@ -91,6 +91,11 @@ export default function ControlBoardTab() {
 
   // Campaign detail modal
   const [showCampDetail, setShowCampDetail] = useState<number|null>(null) // month
+  // Inline edit for campaign row
+  type EditCampForm = { client_name:string; client_type:'new'|'existing'; service_type:string; campaign_name:string; revenue:string; profit:string; note:string }
+  const [editingCampId, setEditingCampId] = useState<string|null>(null)
+  const [editCampForm, setEditCampForm] = useState<EditCampForm>({ client_name:'', client_type:'new', service_type:'live', campaign_name:'', revenue:'', profit:'', note:'' })
+  const [editCampSaving, setEditCampSaving] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -221,12 +226,45 @@ export default function ControlBoardTab() {
 
   async function deleteCampaign(id: string) {
     if (!confirm('ลบแคมเปญนี้?')) return
-    // Optimistic remove
     setCampaigns(prev => prev.filter(c => c.id !== id))
     try {
       const res = await fetch(`/api/campaigns/${id}`, { method: 'DELETE' })
       if (!res.ok) { alert('ลบไม่ได้'); load() }
     } catch { alert('ลบไม่ได้'); load() }
+  }
+
+  function startEditCamp(c: Campaign) {
+    setEditingCampId(c.id)
+    setEditCampForm({
+      client_name: c.client_name, client_type: c.client_type,
+      service_type: c.service_type, campaign_name: c.campaign_name ?? '',
+      revenue: String(c.revenue), profit: String(c.revenue - c.cost),
+      note: c.note ?? '',
+    })
+  }
+
+  async function saveEditCamp(id: string) {
+    setEditCampSaving(true)
+    const revenue = Number(editCampForm.revenue) || 0
+    const profit  = Number(editCampForm.profit)  || 0
+    const patch = {
+      client_name: editCampForm.client_name, client_type: editCampForm.client_type,
+      service_type: editCampForm.service_type,
+      campaign_name: editCampForm.campaign_name || null,
+      revenue, cost: revenue - profit,
+      note: editCampForm.note || null,
+    }
+    // Optimistic update
+    setCampaigns(prev => prev.map(c => c.id===id ? {...c, ...patch} : c))
+    setEditingCampId(null)
+    try {
+      const res = await fetch(`/api/campaigns/${id}`, {
+        method: 'PATCH', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify(patch),
+      })
+      if (!res.ok) { alert('บันทึกไม่สำเร็จ'); load() }
+    } catch { alert('เกิดข้อผิดพลาด'); load() }
+    finally { setEditCampSaving(false) }
   }
 
   // ─── Cell component ───
@@ -455,31 +493,71 @@ export default function ControlBoardTab() {
                   <th className="px-3 py-2 text-left">ลูกค้า / งาน</th>
                   <th className="px-3 py-2 text-left">ประเภท</th>
                   <th className="px-3 py-2 text-right">ยอดขาย</th>
-                  <th className="px-3 py-2 text-right">ต้นทุน</th>
-                  <th className="px-3 py-2 text-right">Profit</th>
+                  <th className="px-3 py-2 text-right">กำไร</th>
                   <th className="px-3 py-2"/>
                 </tr></thead>
-                <tbody className="divide-y divide-gray-50">
-                  {campsForMonth(showCampDetail).map(c=>(
-                    <tr key={c.id} className="hover:bg-gray-50">
-                      <td className="px-3 py-2">
-                        <p className="font-medium text-gray-800">{c.client_name}</p>
-                        {c.campaign_name && <p className="text-xs text-gray-400">{c.campaign_name}</p>}
-                      </td>
-                      <td className="px-3 py-2">
-                        <span className={`text-xs px-2 py-0.5 rounded-full whitespace-nowrap ${c.client_type==='new'?'bg-green-100 text-green-700':'bg-blue-100 text-blue-700'}`}>
-                          {c.client_type==='new'?'🆕 ใหม่':'🔄 เก่า'}
-                        </span>
-                        <p className="text-xs text-gray-400 mt-0.5">{SERVICE_TYPES.find(s=>s.val===c.service_type)?.label}</p>
-                      </td>
-                      <td className="px-3 py-2 text-right font-medium text-emerald-600">{formatCurrency(c.revenue)}</td>
-                      <td className="px-3 py-2 text-right text-rose-500">{formatCurrency(c.cost)}</td>
-                      <td className="px-3 py-2 text-right font-semibold text-indigo-600">{formatCurrency(c.revenue-c.cost)}</td>
-                      <td className="px-3 py-2 text-right">
-                        <button onClick={()=>deleteCampaign(c.id)} className="text-gray-300 hover:text-red-500 p-1"><Trash2 size={13}/></button>
-                      </td>
-                    </tr>
-                  ))}
+                <tbody className="divide-y divide-gray-100">
+                  {campsForMonth(showCampDetail).map(c=>{
+                    const isEditing = editingCampId === c.id
+                    const ef = editCampForm
+                    const inp = 'w-full border border-indigo-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-400'
+                    if (isEditing) return (
+                      <tr key={c.id} className="bg-indigo-50/60">
+                        <td className="px-3 py-2" colSpan={2}>
+                          <div className="grid grid-cols-2 gap-1.5 mb-1.5">
+                            <input className={inp} placeholder="ชื่อลูกค้า" value={ef.client_name} onChange={e=>setEditCampForm(p=>({...p,client_name:e.target.value}))}/>
+                            <input className={inp} placeholder="ชื่องาน" value={ef.campaign_name} onChange={e=>setEditCampForm(p=>({...p,campaign_name:e.target.value}))}/>
+                          </div>
+                          <div className="grid grid-cols-2 gap-1.5">
+                            <select className={inp} value={ef.client_type} onChange={e=>setEditCampForm(p=>({...p,client_type:e.target.value as 'new'|'existing'}))}>
+                              <option value="new">🆕 ลูกค้าใหม่</option>
+                              <option value="existing">🔄 ลูกค้าเก่า</option>
+                            </select>
+                            <select className={inp} value={ef.service_type} onChange={e=>setEditCampForm(p=>({...p,service_type:e.target.value}))}>
+                              {SERVICE_TYPES.map(s=><option key={s.val} value={s.val}>{s.label}</option>)}
+                            </select>
+                          </div>
+                        </td>
+                        <td className="px-2 py-2">
+                          <input type="number" className={inp} placeholder="ยอดขาย" value={ef.revenue} onChange={e=>setEditCampForm(p=>({...p,revenue:e.target.value}))}/>
+                        </td>
+                        <td className="px-2 py-2">
+                          <input type="number" className={inp} placeholder="กำไร" value={ef.profit} onChange={e=>setEditCampForm(p=>({...p,profit:e.target.value}))}/>
+                        </td>
+                        <td className="px-2 py-2 text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <button onClick={()=>saveEditCamp(c.id)} disabled={editCampSaving}
+                              className="bg-indigo-600 text-white px-2 py-1 rounded text-xs hover:bg-indigo-700 disabled:opacity-50">
+                              {editCampSaving?'...':'✅'}
+                            </button>
+                            <button onClick={()=>setEditingCampId(null)} className="text-gray-400 hover:text-gray-600 px-1">✕</button>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                    return (
+                      <tr key={c.id} className="hover:bg-gray-50">
+                        <td className="px-3 py-2">
+                          <p className="font-medium text-gray-800">{c.client_name}</p>
+                          {c.campaign_name && <p className="text-xs text-gray-400">{c.campaign_name}</p>}
+                        </td>
+                        <td className="px-3 py-2">
+                          <span className={`text-xs px-2 py-0.5 rounded-full whitespace-nowrap ${c.client_type==='new'?'bg-green-100 text-green-700':'bg-blue-100 text-blue-700'}`}>
+                            {c.client_type==='new'?'🆕 ใหม่':'🔄 เก่า'}
+                          </span>
+                          <p className="text-xs text-gray-400 mt-0.5">{SERVICE_TYPES.find(s=>s.val===c.service_type)?.label}</p>
+                        </td>
+                        <td className="px-3 py-2 text-right font-medium text-emerald-600">{formatCurrency(c.revenue)}</td>
+                        <td className="px-3 py-2 text-right font-semibold text-indigo-600">{formatCurrency(c.revenue-c.cost)}</td>
+                        <td className="px-3 py-2 text-right">
+                          <div className="flex items-center justify-end gap-0.5">
+                            <button onClick={()=>startEditCamp(c)} className="text-gray-300 hover:text-indigo-500 p-1"><Pencil size={13}/></button>
+                            <button onClick={()=>deleteCampaign(c.id)} className="text-gray-300 hover:text-red-500 p-1"><Trash2 size={13}/></button>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             )}
