@@ -140,11 +140,17 @@ export default function HRTab() {
     setSaving(true)
     const payload = Object.values(edits).filter(r => r.status)
     if (payload.length > 0) {
-      await fetch('/api/work-records/bulk', {
+      const res = await fetch('/api/work-records/bulk', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Unknown error' }))
+        alert('บันทึกไม่ได้: ' + (err.error || JSON.stringify(err)))
+        setSaving(false)
+        return
+      }
     }
     setEdits({})
     await load()

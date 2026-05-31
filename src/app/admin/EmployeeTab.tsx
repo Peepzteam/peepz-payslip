@@ -98,8 +98,16 @@ export default function EmployeeTab() {
   }
 
   async function deleteEmployee(id: string, name: string) {
-    if (!confirm(`ลบ "${name}" ออกจากระบบ?\n\nข้อมูลสลิปเงินเดือนและการทำงานที่ผ่านมาจะถูกลบด้วย`)) return
-    await fetch(`/api/employees/${id}`, { method: 'DELETE' })
+    if (!confirm(`ปิดใช้งาน "${name}"?\n\nพนักงานจะไม่แสดงในระบบอีก แต่ข้อมูลสลิปเงินเดือนและการทำงานยังคงอยู่`)) return
+    const res = await fetch(`/api/employees/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ is_active: false }),
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Unknown error' }))
+      alert('ลบไม่ได้: ' + (err.error || JSON.stringify(err)))
+    }
     loadEmployees()
   }
 
