@@ -2,6 +2,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { formatCurrency } from '@/lib/utils'
 import { Plus, X, ChevronDown, ChevronUp, Pencil, Trash2, Check } from 'lucide-react'
+import ControlBoardAnalytics from './ControlBoardAnalytics'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 interface Campaign {
@@ -67,6 +68,7 @@ export default function ControlBoardTab() {
   const now = new Date()
   const [year, setYear] = useState(now.getFullYear())
   const [loading, setLoading] = useState(true)
+  const [view, setView] = useState<'matrix'|'analytics'>('matrix')
 
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [entries, setEntries] = useState<ControlEntry[]>([])
@@ -397,6 +399,17 @@ export default function ControlBoardTab() {
           <button onClick={()=>setYear(y=>y-1)} className="p-1.5 hover:bg-gray-100 rounded text-gray-500">◀</button>
           <span className="font-semibold text-gray-700 text-sm px-2">{year + 543}</span>
           <button onClick={()=>setYear(y=>y+1)} className="p-1.5 hover:bg-gray-100 rounded text-gray-500">▶</button>
+          {/* View toggle */}
+          <div className="flex bg-gray-100 rounded-lg p-0.5 text-xs font-medium">
+            <button onClick={()=>setView('matrix')}
+              className={`px-3 py-1.5 rounded-md transition ${view==='matrix'?'bg-white text-indigo-700 shadow-sm':'text-gray-500 hover:text-gray-700'}`}>
+              📋 ตาราง
+            </button>
+            <button onClick={()=>setView('analytics')}
+              className={`px-3 py-1.5 rounded-md transition ${view==='analytics'?'bg-white text-indigo-700 shadow-sm':'text-gray-500 hover:text-gray-700'}`}>
+              📊 วิเคราะห์
+            </button>
+          </div>
           <button onClick={()=>setShowCampForm(true)}
             className="flex items-center gap-1.5 bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-indigo-700">
             <Plus size={13}/> เพิ่มแคมเปญ
@@ -565,8 +578,21 @@ export default function ControlBoardTab() {
         </div>
       )}
 
+      {/* ─── Analytics view ───────────────────────────────────────────── */}
+      {view === 'analytics' && (
+        <ControlBoardAnalytics
+          year={year}
+          totRevArr={totRevArr} totProfArr={totProfArr}
+          totalExpArr={totalExpArr} staffTotArr={staffTotArr}
+          kbizBalArr={kbizBalArr}
+          newRevArr={newRevArr} exRevArr={exRevArr}
+          serviceRows={serviceRows}
+          newCamps={newCamps} exCamps={exCamps}
+        />
+      )}
+
       {/* ─── Annual Matrix ─────────────────────────────────────────────── */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+      {view === 'matrix' && <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
         <p className="px-4 py-2 text-xs text-gray-400 bg-gray-50 border-b border-gray-100">
           💡 คลิกเซลล์สีเทาเพื่อแก้ไข | คลิกยอดแคมเปญเพื่อดูรายละเอียด
         </p>
@@ -822,7 +848,7 @@ export default function ControlBoardTab() {
             </tbody>
           </table>
         </div>
-      </div>
+      </div>}
     </div>
   )
 }
