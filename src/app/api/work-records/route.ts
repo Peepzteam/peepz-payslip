@@ -27,9 +27,28 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const body = await req.json()
+  // Check if record exists first (avoids needing unique constraint for upsert)
+  const { data: existing } = await supabaseAdmin
+    .from('work_records')
+    .select('id')
+    .eq('employee_id', body.employee_id)
+    .eq('date', body.date)
+    .maybeSingle()
+
+  if (existing?.id) {
+    const { data, error } = await supabaseAdmin
+      .from('work_records')
+      .update(body)
+      .eq('id', existing.id)
+      .select()
+      .single()
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json(data)
+  }
+
   const { data, error } = await supabaseAdmin
     .from('work_records')
-    .upsert(body, { onConflict: 'employee_id,date' })
+    .insert(body)
     .select()
     .single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
