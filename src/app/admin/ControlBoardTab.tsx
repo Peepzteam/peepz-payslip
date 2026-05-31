@@ -71,6 +71,8 @@ export default function ControlBoardTab() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [entries, setEntries] = useState<ControlEntry[]>([])
   const [payslips, setPayslips] = useState<PayslipRow[]>([])
+  const [incomeRecs, setIncomeRecs] = useState<{month:number;amount:number}[]>([])
+  const [expenseRecs, setExpenseRecs] = useState<{month:number;category:string;amount:number}[]>([])
 
   // Campaign form
   type CampForm = { client_name:string; client_type:'new'|'existing'; service_type:string; campaign_name:string; revenue:string; cost:string; note:string; month:number }
@@ -94,15 +96,19 @@ export default function ControlBoardTab() {
     setLoading(true)
     try {
       const safeJson = async (r: Response) => { try { return await r.json() } catch { return [] } }
-      const [cRes, eRes, pRes] = await Promise.all([
+      const [cRes, eRes, pRes, incRes, expRes] = await Promise.all([
         fetch(`/api/campaigns?year=${year}`, { cache: 'no-store' }),
         fetch(`/api/control-entries?year=${year}`, { cache: 'no-store' }),
         fetch(`/api/payslips?year=${year}&slim=1`, { cache: 'no-store' }),
+        fetch(`/api/income-records?year=${year}`, { cache: 'no-store' }),
+        fetch(`/api/expense-records?year=${year}`, { cache: 'no-store' }),
       ])
-      const [c, e, p] = await Promise.all([safeJson(cRes), safeJson(eRes), safeJson(pRes)])
+      const [c, e, p, inc, exp] = await Promise.all([safeJson(cRes), safeJson(eRes), safeJson(pRes), safeJson(incRes), safeJson(expRes)])
       setCampaigns(Array.isArray(c) ? c : [])
       setEntries(Array.isArray(e) ? e : [])
       setPayslips(Array.isArray(p) ? p : [])
+      setIncomeRecs(Array.isArray(inc) ? inc.map((r: {month:number;amount:number}) => ({month:r.month, amount:r.amount})) : [])
+      setExpenseRecs(Array.isArray(exp) ? exp.map((r: {month:number;category:string;amount:number}) => ({month:r.month, category:r.category, amount:r.amount})) : [])
     } catch (err) { console.error(err) } finally { setLoading(false) }
   }, [year])
 
@@ -131,6 +137,25 @@ export default function ControlBoardTab() {
       (p.employee?.type === 'freelance' || p.guest_type === 'freelance') && !p.employee?.is_owner
     )
   }
+
+  // ─── Finance records aggregations ───
+  function financeIncome(m: number) {
+    return incomeRecs.filter(r => r.month === m).reduce((s,r) => s+r.amount, 0)
+  }
+  function financeExp(cat: string, m: number) {
+    // map control-board category keys → Finance expense_records categories
+    const catMap: Record<string,string> = {
+      office_rent:     'rent',
+      office_utils:    'utilities',
+      office_software: 'software',
+      tax_vat_wht:     'tax',
+    }
+    const finCat = catMap[cat]
+    if (!finCat) return null // null = no Finance source → stays manual
+    return expenseRecs.filter(r => r.month === m && r.category === finCat).reduce((s,r) => s+r.amount, 0)
+  }
+  // Categories that are auto-synced from Finance tab (read-only in control board)
+  const FINANCE_SYNCED = new Set(['office_rent','office_utils','office_software','tax_vat_wht'])
 
   // ─── Campaign aggregations ───
   function campsForMonth(m: number, type?: 'new'|'existing') {
@@ -254,11 +279,14 @@ export default function ControlBoardTab() {
   }
 
   // ─── Row label ───
-  function RowLabel({ label, indent=0, sub=false, bold=false }: {label:string;indent?:number;sub?:boolean;bold?:boolean}) {
+  function RowLabel({ label, indent=0, sub=false, bold=false, synced=false }: {label:string;indent?:number;sub?:boolean;bold?:boolean;synced?:boolean}) {
     return (
       <td className={`px-3 py-1.5 text-xs whitespace-nowrap ${sub?'text-gray-400':bold?'text-gray-800 font-bold':'text-gray-600 font-medium'} sticky left-0 bg-white z-10`}
         style={{paddingLeft: 12 + indent*16}}>
-        {sub ? `· ${label}` : label}
+        <span className="flex items-center gap-1">
+          {sub ? `· ${label}` : label}
+          {synced && <span className="text-[9px] bg-emerald-100 text-emerald-600 px-1 py-0.5 rounded font-medium leading-none">🔗 Finance</span>}
+        </span>
       </td>
     )
   }
@@ -291,14 +319,19 @@ export default function ControlBoardTab() {
   const flArr        = m12.map(m => freelanceSlips(m).reduce((s,p)=>s+p.net_pay,0))
   const staffTotArr  = m12.map((_,i)=>ownerTotArr[i]+staffSalArr[i]+staffOtArr[i]+flArr[i])
 
-  // KBIZ
-  const kbizIncArr   = entryRow('kbiz_income')
+  // KBIZ — kbiz_income auto-synced from Finance income_records
+  const kbizIncArr   = m12.map((_,i) => financeIncome(i+1) || entryVal('kbiz_income', i+1))
   const kbizCarryArr = entryRow('kbiz_carry')
-  // total expense = owner + staff + all manual expense cats
+  // For synced expense cats: use Finance data; for others: use control_entries
+  function resolveExpVal(cat: string, m: number) {
+    const fromFinance = financeExp(cat, m)
+    return fromFinance !== null ? fromFinance : entryVal(cat, m)
+  }
+  // total expense = owner + staff + all expense cats (auto or manual)
   const expCats = ['team_food','team_outing','team_party','team_snack','team_birthday','team_welcome','team_activity',
                    'mkt_ads','mkt_ops','office_rent','office_utils','office_software','office_domain','office_equip',
                    'tax_vat_wht','petty_cash']
-  const manualExpArr = m12.map((_,i) => expCats.reduce((s,cat)=>s+entryVal(cat,i+1),0))
+  const manualExpArr = m12.map((_,i) => expCats.reduce((s,cat)=>s+resolveExpVal(cat,i+1),0))
   const totalExpArr  = m12.map((_,i)=>staffTotArr[i]+manualExpArr[i])
   const kbizBalArr   = m12.map((_,i)=>kbizCarryArr[i]+kbizIncArr[i]-totalExpArr[i])
 
@@ -565,9 +598,14 @@ export default function ControlBoardTab() {
                   {cat:'kbiz_income', color:'text-emerald-600'},
                 ].map(({cat,color})=>(
                   <tr key={cat} className="hover:bg-gray-50/50">
-                    <RowLabel label={MANUAL_CATS[cat]}/>
-                    {m12.map((_,i)=><Cell key={i+1} cat={cat} m={i+1} value={entryVal(cat,i+1)} color={color}/>)}
-                    <td className="px-2 py-1.5 text-right text-xs font-bold bg-gray-50 whitespace-nowrap">{formatCurrency(sum(entryRow(cat)))}</td>
+                    <RowLabel label={MANUAL_CATS[cat]} synced={cat==='kbiz_income'}/>
+                    {cat==='kbiz_income'
+                      ? m12.map((_,i)=><Cell key={i+1} m={i+1} value={kbizIncArr[i]} readOnly color={color}/>)
+                      : m12.map((_,i)=><Cell key={i+1} cat={cat} m={i+1} value={entryVal(cat,i+1)} color={color}/>)
+                    }
+                    <td className="px-2 py-1.5 text-right text-xs font-bold bg-gray-50 whitespace-nowrap">
+                      {cat==='kbiz_income' ? formatCurrency(sum(kbizIncArr)) : formatCurrency(sum(entryRow(cat)))}
+                    </td>
                   </tr>
                 ))}
                 <tr className="bg-rose-50/40 hover:bg-rose-50">
@@ -656,23 +694,40 @@ export default function ControlBoardTab() {
 
               {/* ═══ SECTION: Office & System ════════════════════════════════ */}
               <SectionHeader id="office" label="🏢 Office & System Cost (จ่ายโดย KBIZ)" color="bg-sky-50 text-sky-800"/>
-              {!collapsed['office'] && ['office_rent','office_utils','office_software','office_domain','office_equip'].map(cat=>(
-                <tr key={cat} className="hover:bg-gray-50/50">
-                  <RowLabel label={MANUAL_CATS[cat]} indent={1} sub/>
-                  {m12.map((_,i)=><Cell key={i+1} cat={cat} m={i+1} value={entryVal(cat,i+1)} color="text-sky-600"/>)}
-                  <td className="px-2 py-1.5 text-right text-xs font-bold text-sky-600 bg-gray-50 whitespace-nowrap">{formatCurrency(sum(entryRow(cat)))}</td>
-                </tr>
-              ))}
+              {!collapsed['office'] && ['office_rent','office_utils','office_software','office_domain','office_equip'].map(cat=>{
+                const synced = FINANCE_SYNCED.has(cat)
+                const rowArr = m12.map((_,i)=>resolveExpVal(cat,i+1))
+                return (
+                  <tr key={cat} className="hover:bg-gray-50/50">
+                    <RowLabel label={MANUAL_CATS[cat]} indent={1} sub synced={synced}/>
+                    {m12.map((_,i)=>(
+                      synced
+                        ? <Cell key={i+1} m={i+1} value={rowArr[i]} readOnly color="text-sky-600"/>
+                        : <Cell key={i+1} cat={cat} m={i+1} value={entryVal(cat,i+1)} color="text-sky-600"/>
+                    ))}
+                    <td className="px-2 py-1.5 text-right text-xs font-bold text-sky-600 bg-gray-50 whitespace-nowrap">{formatCurrency(sum(rowArr))}</td>
+                  </tr>
+                )
+              })}
 
               {/* ═══ SECTION: ภาษี + Petty Cash ═══════════════════════════ */}
               <SectionHeader id="tax" label="📋 ภาษีและงานราชการ + Petty Cash" color="bg-red-50 text-red-800"/>
-              {!collapsed['tax'] && ['tax_vat_wht','petty_cash'].map(cat=>(
-                <tr key={cat} className="hover:bg-gray-50/50">
-                  <RowLabel label={MANUAL_CATS[cat]} indent={1} sub/>
-                  {m12.map((_,i)=><Cell key={i+1} cat={cat} m={i+1} value={entryVal(cat,i+1)} color={cat==='petty_cash'?'text-gray-600':'text-red-600'}/>)}
-                  <td className={`px-2 py-1.5 text-right text-xs font-bold bg-gray-50 whitespace-nowrap ${cat==='petty_cash'?'text-gray-600':'text-red-600'}`}>{formatCurrency(sum(entryRow(cat)))}</td>
-                </tr>
-              ))}
+              {!collapsed['tax'] && ['tax_vat_wht','petty_cash'].map(cat=>{
+                const synced = FINANCE_SYNCED.has(cat)
+                const color = cat==='petty_cash'?'text-gray-600':'text-red-600'
+                const rowArr = m12.map((_,i)=>resolveExpVal(cat,i+1))
+                return (
+                  <tr key={cat} className="hover:bg-gray-50/50">
+                    <RowLabel label={MANUAL_CATS[cat]} indent={1} sub synced={synced}/>
+                    {m12.map((_,i)=>(
+                      synced
+                        ? <Cell key={i+1} m={i+1} value={rowArr[i]} readOnly color={color}/>
+                        : <Cell key={i+1} cat={cat} m={i+1} value={entryVal(cat,i+1)} color={color}/>
+                    ))}
+                    <td className={`px-2 py-1.5 text-right text-xs font-bold bg-gray-50 whitespace-nowrap ${color}`}>{formatCurrency(sum(rowArr))}</td>
+                  </tr>
+                )
+              })}
 
               {/* ═══ SECTION: Services Sold ══════════════════════════════════ */}
               <SectionHeader id="services" label="🛒 Services ที่ขายออก (ยอดขายแยกตามประเภท)" color="bg-violet-50 text-violet-800"/>
