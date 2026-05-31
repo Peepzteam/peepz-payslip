@@ -7,8 +7,9 @@ import OverviewTab from './OverviewTab'
 import HRTab from './HRTab'
 import FinanceTab from './FinanceTab'
 import HolidaysTab from './HolidaysTab'
+import ControlBoardTab from './ControlBoardTab'
 
-type Tab = 'overview' | 'payslips' | 'employees' | 'hr' | 'finance' | 'holidays'
+type Tab = 'overview' | 'payslips' | 'employees' | 'hr' | 'finance' | 'holidays' | 'control'
 
 export default function AdminPage() {
   const router = useRouter()
@@ -26,6 +27,7 @@ export default function AdminPage() {
     { id: 'employees', label: 'พนักงาน', icon: '👥' },
     { id: 'finance', label: 'การเงิน', icon: '💰' },
     { id: 'holidays', label: 'วันหยุด', icon: '🏖️' },
+    { id: 'control', label: 'Control Board', icon: '📋' },
   ]
 
   return (
@@ -69,6 +71,7 @@ export default function AdminPage() {
         {tab === 'employees' && <EmployeeTab />}
         {tab === 'finance' && <FinanceTab />}
         {tab === 'holidays' && <HolidaysTab />}
+        {tab === 'control' && <ControlBoardTab />}
       </div>
     </main>
   )
