@@ -111,7 +111,7 @@ export default function PayslipTab() {
     if (isFreelance) {
       wht = Math.round(lineItemsTotal * 0.03)
     } else if (isOwner) {
-      wht = Math.round(((Number(form.base_salary) || 0) + incentiveTotal) * 0.03)
+      wht = Math.round(incentiveTotal * 0.03)
     } else {
       wht = Math.round(incentiveTotal * 0.03)
     }
@@ -129,8 +129,8 @@ export default function PayslipTab() {
     const isOwnEmp = selectedEmployee.is_owner === true
     const salary = selectedEmployee.base_salary || 0
     const ss = calcSocialSecurity(salary, isOwnEmp, isFree)
-    // WHT ตอนเลือก employee: ยังไม่มี incentive → owner = 3% เงินเดือน, อื่น = 0
-    const wht = isOwnEmp ? Math.round(salary * 0.03) : 0
+    // WHT ตอนเลือก employee: ยังไม่มี incentive → WHT = 0 เสมอ (จะ recalc เมื่อกรอก incentive)
+    const wht = 0
     setForm((prev) => ({
       ...prev,
       base_salary: selectedEmployee.base_salary?.toString() || prev.base_salary,
