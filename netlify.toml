@@ -2,5 +2,20 @@
   command = "npm run build"
   publish = ".next"
 
+[build.environment]
+  NODE_VERSION = "20"
+  NEXT_TELEMETRY_DISABLED = "1"
+
 [[plugins]]
   package = "@netlify/plugin-nextjs"
+
+# Cache API routes ที่ข้อมูลไม่เปลี่ยนบ่อย
+[[headers]]
+  for = "/api/employees"
+  [headers.values]
+    Cache-Control = "s-maxage=60, stale-while-revalidate=300"
+
+[[headers]]
+  for = "/api/holidays"
+  [headers.values]
+    Cache-Control = "s-maxage=3600, stale-while-revalidate=86400"
