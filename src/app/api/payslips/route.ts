@@ -29,7 +29,6 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const body = await req.json()
   const sendEmail = body.send_email === true
-  const overwrite = body.overwrite === true
   delete body.send_email
   delete body.overwrite
 
@@ -44,15 +43,6 @@ export async function POST(req: NextRequest) {
   body.gross_income = gross
   body.total_deduction = deduct
   body.net_pay = gross - deduct
-
-  // ถ้า overwrite=true ให้ลบของเดิมก่อน (มีได้แค่สลิปเดียวต่อพนักงานต่อเดือน)
-  if (overwrite && body.employee_id && body.period_month && body.period_year) {
-    await supabaseAdmin.from('payslips')
-      .delete()
-      .eq('employee_id', body.employee_id)
-      .eq('period_month', body.period_month)
-      .eq('period_year', body.period_year)
-  }
 
   const { data, error } = await supabaseAdmin
     .from('payslips')
