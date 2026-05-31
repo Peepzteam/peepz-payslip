@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useState, useCallback } from 'react'
 import { formatCurrency } from '@/lib/utils'
-import { Plus, Trash2, ChevronLeft, ChevronRight, TrendingUp, TrendingDown, Wallet, X, Calendar, Pencil, Check } from 'lucide-react'
+import { Plus, Trash2, ChevronLeft, ChevronRight, TrendingUp, TrendingDown, Wallet, X, Pencil, Check } from 'lucide-react'
 
 interface IncomeRecord {
   id: string; month: number; year: number
@@ -28,23 +28,23 @@ const INCOME_SOURCES = [
 ]
 
 const EXPENSE_CATEGORIES = [
-  { val: 'salary',     label: '👥 เงินเดือนพนักงาน',   color: 'text-indigo-600' },
-  { val: 'freelance',  label: '🎨 ค่าจ้าง Freelance',  color: 'text-amber-600' },
-  { val: 'petty_cash', label: '💼 Petty Cash',          color: 'text-orange-600' },
-  { val: 'tax',        label: '🏛️ ภาษี',               color: 'text-red-600' },
-  { val: 'rent',       label: '🏠 ค่าเช่า',             color: 'text-teal-600' },
-  { val: 'utilities',  label: '⚡ ค่าสาธารณูปโภค',     color: 'text-cyan-600' },
-  { val: 'software',   label: '💻 Software/Tools',      color: 'text-violet-600' },
-  { val: 'other',      label: '📦 อื่นๆ',              color: 'text-gray-600' },
+  { val: 'salary',     label: '👥 เงินเดือน',         color: 'text-indigo-600', bg: 'bg-indigo-50' },
+  { val: 'freelance',  label: '🎨 Freelance',          color: 'text-amber-600',  bg: 'bg-amber-50' },
+  { val: 'petty_cash', label: '💼 Petty Cash',         color: 'text-orange-600', bg: 'bg-orange-50' },
+  { val: 'tax',        label: '🏛️ ภาษี',              color: 'text-red-600',    bg: 'bg-red-50' },
+  { val: 'rent',       label: '🏠 ค่าเช่า',            color: 'text-teal-600',   bg: 'bg-teal-50' },
+  { val: 'utilities',  label: '⚡ สาธารณูปโภค',        color: 'text-cyan-600',   bg: 'bg-cyan-50' },
+  { val: 'software',   label: '💻 Software',           color: 'text-violet-600', bg: 'bg-violet-50' },
+  { val: 'other',      label: '📦 อื่นๆ',             color: 'text-gray-600',   bg: 'bg-gray-50' },
 ]
 
 const MONTHS = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.']
 const MONTH_FULL = ['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม']
 
-function formatDate(dateStr: string | null) {
+function formatDateShort(dateStr: string | null) {
   if (!dateStr) return null
-  const d = new Date(dateStr)
-  return `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear() + 543}`
+  const d = new Date(dateStr + 'T00:00:00')
+  return `${d.getDate()} ${MONTHS[d.getMonth()]}`
 }
 function todayISO() {
   return new Date().toISOString().split('T')[0]
@@ -65,15 +65,13 @@ export default function FinanceTab() {
   const [allExpenses, setAllExpenses] = useState<ExpenseRecord[]>([])
   const [loading, setLoading] = useState(true)
 
-  const [showIncomeForm, setShowIncomeForm] = useState(false)
-  const [showExpenseForm, setShowExpenseForm] = useState(false)
+  const [showForm, setShowForm] = useState<'income' | 'expense' | null>(null)
   const [incomeForm, setIncomeForm] = useState({...EMPTY_INCOME})
   const [expenseForm, setExpenseForm] = useState({...EMPTY_EXPENSE})
 
-  // Edit states
-  const [editingIncomeId, setEditingIncomeId] = useState<string | null>(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editType, setEditType] = useState<'income' | 'expense' | null>(null)
   const [editIncomeForm, setEditIncomeForm] = useState({...EMPTY_INCOME})
-  const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null)
   const [editExpenseForm, setEditExpenseForm] = useState({...EMPTY_EXPENSE})
   const [saving, setSaving] = useState(false)
 
@@ -106,7 +104,7 @@ export default function FinanceTab() {
       body: JSON.stringify({ ...incomeForm, amount: Number(incomeForm.amount), month, year }),
     })
     setIncomeForm({...EMPTY_INCOME, transaction_date: todayISO()})
-    setShowIncomeForm(false); load()
+    setShowForm(null); load()
   }
 
   async function addExpense() {
@@ -116,69 +114,39 @@ export default function FinanceTab() {
       body: JSON.stringify({ ...expenseForm, amount: Number(expenseForm.amount), month, year }),
     })
     setExpenseForm({...EMPTY_EXPENSE, transaction_date: todayISO()})
-    setShowExpenseForm(false); load()
+    setShowForm(null); load()
   }
 
   function startEditIncome(r: IncomeRecord) {
-    setEditingIncomeId(r.id)
-    setEditingExpenseId(null)
-    setEditIncomeForm({
-      amount: r.amount.toString(),
-      sources: Array.isArray(r.sources) ? r.sources : [],
-      client_name: r.client_name || '',
-      description: r.description || '',
-      note: r.note || '',
-      transaction_date: r.transaction_date || todayISO(),
-    })
+    setEditingId(r.id); setEditType('income');
+    setEditIncomeForm({ amount: r.amount.toString(), sources: Array.isArray(r.sources) ? r.sources : [], client_name: r.client_name || '', description: r.description || '', note: r.note || '', transaction_date: r.transaction_date || todayISO() })
   }
 
   async function saveIncome() {
-    if (!editingIncomeId) return
+    if (!editingId) return
     setSaving(true)
-    // derive month/year from transaction_date if changed
-    const d = new Date(editIncomeForm.transaction_date)
-    const newMonth = d.getMonth() + 1
-    const newYear = d.getFullYear()
-    await fetch(`/api/income-records/${editingIncomeId}`, {
+    const d = new Date(editIncomeForm.transaction_date + 'T00:00:00')
+    await fetch(`/api/income-records/${editingId}`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        ...editIncomeForm,
-        amount: Number(editIncomeForm.amount),
-        month: newMonth,
-        year: newYear,
-      }),
+      body: JSON.stringify({ ...editIncomeForm, amount: Number(editIncomeForm.amount), month: d.getMonth()+1, year: d.getFullYear() }),
     })
-    setSaving(false); setEditingIncomeId(null); load()
+    setSaving(false); setEditingId(null); setEditType(null); load()
   }
 
   function startEditExpense(r: ExpenseRecord) {
-    setEditingExpenseId(r.id)
-    setEditingIncomeId(null)
-    setEditExpenseForm({
-      category: r.category,
-      amount: r.amount.toString(),
-      description: r.description || '',
-      note: r.note || '',
-      transaction_date: r.transaction_date || todayISO(),
-    })
+    setEditingId(r.id); setEditType('expense');
+    setEditExpenseForm({ category: r.category, amount: r.amount.toString(), description: r.description || '', note: r.note || '', transaction_date: r.transaction_date || todayISO() })
   }
 
   async function saveExpense() {
-    if (!editingExpenseId) return
+    if (!editingId) return
     setSaving(true)
-    const d = new Date(editExpenseForm.transaction_date)
-    const newMonth = d.getMonth() + 1
-    const newYear = d.getFullYear()
-    await fetch(`/api/expense-records/${editingExpenseId}`, {
+    const d = new Date(editExpenseForm.transaction_date + 'T00:00:00')
+    await fetch(`/api/expense-records/${editingId}`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        ...editExpenseForm,
-        amount: Number(editExpenseForm.amount),
-        month: newMonth,
-        year: newYear,
-      }),
+      body: JSON.stringify({ ...editExpenseForm, amount: Number(editExpenseForm.amount), month: d.getMonth()+1, year: d.getFullYear() }),
     })
-    setSaving(false); setEditingExpenseId(null); load()
+    setSaving(false); setEditingId(null); setEditType(null); load()
   }
 
   async function deleteIncome(id: string) {
@@ -205,11 +173,26 @@ export default function FinanceTab() {
     return INCOME_SOURCES.find(s => s.val === val) ?? { label: val, color: 'bg-gray-100 text-gray-600 border-gray-200' }
   }
   function catMeta(val: string) {
-    return EXPENSE_CATEGORIES.find(c => c.val === val) ?? { label: val, color: 'text-gray-600' }
+    return EXPENSE_CATEGORIES.find(c => c.val === val) ?? { label: val, color: 'text-gray-600', bg: 'bg-gray-50' }
   }
 
-  const sortedIncomes = [...incomes].sort((a, b) => (a.transaction_date ?? a.created_at).localeCompare(b.transaction_date ?? b.created_at))
-  const sortedExpenses = [...expenses].sort((a, b) => (a.transaction_date ?? a.created_at).localeCompare(b.transaction_date ?? b.created_at))
+  // Combined ledger rows sorted by date
+  type LedgerRow =
+    | { kind: 'income'; rec: IncomeRecord; sortKey: string }
+    | { kind: 'expense'; rec: ExpenseRecord; sortKey: string }
+
+  const ledger: LedgerRow[] = [
+    ...incomes.map(r => ({ kind: 'income' as const, rec: r, sortKey: (r.transaction_date ?? r.created_at) + r.id })),
+    ...expenses.map(r => ({ kind: 'expense' as const, rec: r, sortKey: (r.transaction_date ?? r.created_at) + r.id })),
+  ].sort((a, b) => a.sortKey.localeCompare(b.sortKey))
+
+  // Running balance
+  let running = 0
+  const ledgerWithBalance = ledger.map(row => {
+    if (row.kind === 'income') running += Number(row.rec.amount)
+    else running -= Number(row.rec.amount)
+    return { ...row, balance: running }
+  })
 
   const yearlyData = Array.from({ length: 12 }, (_, i) => {
     const m = i + 1
@@ -234,252 +217,219 @@ export default function FinanceTab() {
           {view === 'month' && (
             <div className="flex items-center gap-1 bg-white border border-orange-200 rounded-lg px-1">
               <button onClick={() => navigate(-1)} className="p-1.5 hover:bg-orange-50 rounded text-orange-500"><ChevronLeft size={15} /></button>
-              <span className="text-sm font-semibold px-2 min-w-[100px] text-center text-orange-700">{MONTH_FULL[month-1]} {year+543}</span>
+              <span className="text-sm font-semibold px-2 min-w-[120px] text-center text-orange-700">{MONTH_FULL[month-1]} {year+543}</span>
               <button onClick={() => navigate(1)} className="p-1.5 hover:bg-orange-50 rounded text-orange-500"><ChevronRight size={15} /></button>
             </div>
           )}
         </div>
-        <div className="flex bg-orange-50 rounded-lg p-0.5 border border-orange-100">
-          {(['month','year'] as const).map(v => (
-            <button key={v} onClick={() => setView(v)}
-              className={`px-3 py-1.5 rounded-md text-xs font-medium transition ${view===v ? 'bg-white shadow-sm text-orange-700' : 'text-orange-400 hover:text-orange-600'}`}>
-              {v === 'month' ? 'รายเดือน' : 'ภาพรวมปี'}
-            </button>
-          ))}
+        <div className="flex items-center gap-2">
+          <div className="flex bg-orange-50 rounded-lg p-0.5 border border-orange-100">
+            {(['month','year'] as const).map(v => (
+              <button key={v} onClick={() => setView(v)}
+                className={`px-3 py-1.5 rounded-md text-xs font-medium transition ${view===v ? 'bg-white shadow-sm text-orange-700' : 'text-orange-400 hover:text-orange-600'}`}>
+                {v === 'month' ? '📋 รายเดือน' : '📊 สรุปรายปี'}
+              </button>
+            ))}
+          </div>
+          {view === 'month' && (
+            <>
+              <button onClick={() => setShowForm(showForm === 'income' ? null : 'income')}
+                className="flex items-center gap-1.5 bg-emerald-500 text-white px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-emerald-600 shadow-sm">
+                <Plus size={13} /> รายรับ
+              </button>
+              <button onClick={() => setShowForm(showForm === 'expense' ? null : 'expense')}
+                className="flex items-center gap-1.5 bg-rose-500 text-white px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-rose-600 shadow-sm">
+                <Plus size={13} /> รายจ่าย
+              </button>
+            </>
+          )}
         </div>
       </div>
 
       {loading ? (
         <p className="text-center text-orange-300 py-8">กำลังโหลด...</p>
       ) : view === 'year' ? (
-        <YearView data={yearlyData} year={year} yearTotal={yearTotal} setYear={setYear} onClickMonth={(m) => { setMonth(m); setView('month') }} />
+        <YearView data={yearlyData} year={year} yearTotal={yearTotal}
+          allIncomes={allIncomes} allExpenses={allExpenses}
+          setYear={setYear} onClickMonth={(m) => { setMonth(m); setView('month') }} />
       ) : (
         <>
           {/* Summary cards */}
-          <div className="grid grid-cols-3 gap-4">
-            <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-2xl p-5 text-white shadow-lg">
-              <div className="flex items-center gap-2 mb-2"><TrendingUp size={18} /><span className="text-sm font-medium opacity-90">รายได้เดือนนี้</span></div>
-              <p className="text-3xl font-bold">{formatCurrency(totalIncome)}</p>
-              <p className="text-xs opacity-75 mt-1">{incomes.length} รายการ</p>
+          <div className="grid grid-cols-3 gap-3">
+            <div className="bg-white border border-emerald-200 rounded-xl p-4 flex items-center gap-3">
+              <div className="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center shrink-0">
+                <TrendingUp size={18} className="text-emerald-600" />
+              </div>
+              <div>
+                <p className="text-xs text-gray-500">รายรับเดือนนี้</p>
+                <p className="text-xl font-bold text-emerald-600">{formatCurrency(totalIncome)}</p>
+                <p className="text-xs text-gray-400">{incomes.length} รายการ</p>
+              </div>
             </div>
-            <div className="bg-gradient-to-br from-rose-500 to-rose-600 rounded-2xl p-5 text-white shadow-lg">
-              <div className="flex items-center gap-2 mb-2"><TrendingDown size={18} /><span className="text-sm font-medium opacity-90">รายจ่ายเดือนนี้</span></div>
-              <p className="text-3xl font-bold">{formatCurrency(totalExpense)}</p>
-              <p className="text-xs opacity-75 mt-1">{expenses.length} รายการ</p>
+            <div className="bg-white border border-rose-200 rounded-xl p-4 flex items-center gap-3">
+              <div className="w-10 h-10 bg-rose-100 rounded-xl flex items-center justify-center shrink-0">
+                <TrendingDown size={18} className="text-rose-600" />
+              </div>
+              <div>
+                <p className="text-xs text-gray-500">รายจ่ายเดือนนี้</p>
+                <p className="text-xl font-bold text-rose-600">{formatCurrency(totalExpense)}</p>
+                <p className="text-xs text-gray-400">{expenses.length} รายการ</p>
+              </div>
             </div>
-            <div className={`rounded-2xl p-5 text-white shadow-lg ${netProfit >= 0 ? 'bg-gradient-to-br from-emerald-500 to-emerald-600' : 'bg-gradient-to-br from-gray-500 to-gray-600'}`}>
-              <div className="flex items-center gap-2 mb-2"><Wallet size={18} /><span className="text-sm font-medium opacity-90">กำไร/ขาดทุน</span></div>
-              <p className="text-3xl font-bold">{formatCurrency(netProfit)}</p>
-              <p className="text-xs opacity-75 mt-1">{netProfit >= 0 ? '✅ บวก' : '⚠️ ลบ'}</p>
+            <div className={`bg-white rounded-xl p-4 flex items-center gap-3 border ${netProfit >= 0 ? 'border-indigo-200' : 'border-gray-200'}`}>
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${netProfit >= 0 ? 'bg-indigo-100' : 'bg-gray-100'}`}>
+                <Wallet size={18} className={netProfit >= 0 ? 'text-indigo-600' : 'text-gray-500'} />
+              </div>
+              <div>
+                <p className="text-xs text-gray-500">กำไร / ขาดทุน</p>
+                <p className={`text-xl font-bold ${netProfit >= 0 ? 'text-indigo-600' : 'text-red-500'}`}>{formatCurrency(netProfit)}</p>
+                <p className="text-xs text-gray-400">{netProfit >= 0 ? '✅ บวก' : '⚠️ ลบ'}</p>
+              </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {/* ── Income ── */}
-            <div className="bg-white rounded-2xl border border-orange-100 shadow-sm overflow-hidden">
-              <div className="flex items-center justify-between px-5 py-4 bg-gradient-to-r from-orange-50 to-amber-50 border-b border-orange-100">
-                <div>
-                  <h3 className="font-bold text-orange-800">💵 เงินเข้ารายเดือน</h3>
-                  <p className="text-xs text-orange-400">{MONTH_FULL[month-1]} {year+543}</p>
-                </div>
-                <button onClick={() => { setShowIncomeForm(v => !v); setShowExpenseForm(false); setEditingIncomeId(null) }}
-                  className="flex items-center gap-1.5 bg-orange-500 text-white px-3 py-1.5 rounded-xl text-xs font-semibold hover:bg-orange-600 shadow-sm">
-                  <Plus size={13} /> เพิ่มรายได้
-                </button>
+          {/* Add forms */}
+          {showForm === 'income' && (
+            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="font-semibold text-emerald-800 text-sm">+ เพิ่มรายรับ</p>
+                <button onClick={() => setShowForm(null)}><X size={15} className="text-gray-400" /></button>
               </div>
+              <IncomeFormFields form={incomeForm} setForm={setIncomeForm} toggleSource={(s) => toggleSource(s, incomeForm, setIncomeForm)} />
+              <button onClick={addIncome} className="bg-emerald-500 text-white px-5 py-2 rounded-lg text-sm font-semibold hover:bg-emerald-600">💾 บันทึกรายรับ</button>
+            </div>
+          )}
+          {showForm === 'expense' && (
+            <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="font-semibold text-rose-800 text-sm">+ เพิ่มรายจ่าย</p>
+                <button onClick={() => setShowForm(null)}><X size={15} className="text-gray-400" /></button>
+              </div>
+              <ExpenseFormFields form={expenseForm} setForm={setExpenseForm} />
+              <button onClick={addExpense} className="bg-rose-500 text-white px-5 py-2 rounded-lg text-sm font-semibold hover:bg-rose-600">💾 บันทึกรายจ่าย</button>
+            </div>
+          )}
 
-              {/* Add income form */}
-              {showIncomeForm && (
-                <div className="px-5 py-4 border-b border-orange-100 bg-orange-50/50 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm font-semibold text-orange-700">+ รายได้ใหม่</p>
-                    <button onClick={() => setShowIncomeForm(false)}><X size={15} className="text-gray-400" /></button>
-                  </div>
-                  <IncomeFormFields form={incomeForm} setForm={setIncomeForm} toggleSource={(s) => toggleSource(s, incomeForm, setIncomeForm)} borderColor="orange" />
-                  <button onClick={addIncome} className="w-full bg-orange-500 text-white py-2 rounded-xl text-sm font-semibold hover:bg-orange-600">💾 บันทึกรายได้</button>
-                </div>
-              )}
-
-              {/* Income table */}
-              <div className="overflow-x-auto">
-                {sortedIncomes.length === 0 ? (
-                  <p className="px-5 py-8 text-center text-gray-300 text-sm">ยังไม่มีรายได้เดือนนี้</p>
-                ) : (
-                  <table className="w-full text-sm">
-                    <thead className="bg-orange-50 text-orange-600 text-xs">
-                      <tr>
-                        <th className="px-4 py-2 text-left font-semibold">วันที่</th>
-                        <th className="px-4 py-2 text-left font-semibold">ลูกค้า / รายละเอียด</th>
-                        <th className="px-4 py-2 text-left font-semibold">ประเภท</th>
-                        <th className="px-4 py-2 text-right font-semibold">ยอด</th>
-                        <th className="px-2 py-2 w-14"></th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-orange-50">
-                      {sortedIncomes.map(r => (
-                        editingIncomeId === r.id ? (
-                          /* ─── Edit row ─── */
-                          <tr key={r.id} className="bg-orange-50/60">
-                            <td colSpan={5} className="px-4 py-3">
+          {/* Combined Ledger Table */}
+          <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+            {ledgerWithBalance.length === 0 ? (
+              <div className="p-12 text-center">
+                <p className="text-gray-300 text-4xl mb-3">📒</p>
+                <p className="text-gray-400 text-sm">ยังไม่มีรายการเดือนนี้</p>
+                <p className="text-xs text-gray-400 mt-1">กดปุ่ม "รายรับ" หรือ "รายจ่าย" ด้านบนเพื่อเพิ่ม</p>
+              </div>
+            ) : (
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 text-gray-500 text-xs uppercase border-b border-gray-100">
+                  <tr>
+                    <th className="px-4 py-3 text-center w-10">#</th>
+                    <th className="px-4 py-3 text-left w-20">วันที่</th>
+                    <th className="px-4 py-3 text-left">รายการ / ลูกค้า</th>
+                    <th className="px-4 py-3 text-left w-32">หมวด</th>
+                    <th className="px-4 py-3 text-right w-32 text-emerald-600">ยอดรับ</th>
+                    <th className="px-4 py-3 text-right w-32 text-rose-600">ยอดจ่าย</th>
+                    <th className="px-4 py-3 text-right w-32 text-indigo-600">คงเหลือ</th>
+                    <th className="px-2 py-3 w-14"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {ledgerWithBalance.map((row, idx) => {
+                    const isEditingThis = editingId === row.rec.id && editType === row.kind
+                    if (isEditingThis) {
+                      return (
+                        <tr key={row.rec.id} className={`${row.kind === 'income' ? 'bg-emerald-50/60' : 'bg-rose-50/60'}`}>
+                          <td colSpan={8} className="px-4 py-3">
+                            {row.kind === 'income' ? (
                               <IncomeFormFields form={editIncomeForm} setForm={setEditIncomeForm}
-                                toggleSource={(s) => toggleSource(s, editIncomeForm, setEditIncomeForm)} borderColor="orange" />
-                              <div className="flex gap-2 mt-3">
-                                <button onClick={saveIncome} disabled={saving}
-                                  className="flex items-center gap-1 bg-orange-500 text-white px-4 py-1.5 rounded-lg text-xs font-semibold hover:bg-orange-600 disabled:opacity-60">
-                                  <Check size={12} /> {saving ? 'บันทึก...' : 'บันทึก'}
-                                </button>
-                                <button onClick={() => setEditingIncomeId(null)}
-                                  className="flex items-center gap-1 border border-gray-300 px-4 py-1.5 rounded-lg text-xs hover:bg-gray-50">
-                                  <X size={12} /> ยกเลิก
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        ) : (
-                          /* ─── Normal row ─── */
-                          <tr key={r.id} className="hover:bg-orange-50/40 group">
-                            <td className="px-4 py-2.5 whitespace-nowrap">
-                              <div className="flex items-center gap-1 text-gray-500 text-xs">
-                                <Calendar size={11} className="text-orange-400" />
-                                {r.transaction_date ? formatDate(r.transaction_date) : <span className="text-gray-300">—</span>}
-                              </div>
-                            </td>
-                            <td className="px-4 py-2.5">
-                              {r.client_name && <p className="font-medium text-gray-800">{r.client_name}</p>}
-                              {r.description && <p className="text-xs text-gray-500">{r.description}</p>}
-                              {r.note && <p className="text-xs text-gray-400 italic">{r.note}</p>}
-                            </td>
-                            <td className="px-4 py-2.5">
-                              <div className="flex flex-wrap gap-1">
-                                {(Array.isArray(r.sources) ? r.sources : []).map((s: string) => (
-                                  <span key={s} className={`text-xs px-2 py-0.5 rounded-full border ${sourceLabel(s).color}`}>{sourceLabel(s).label}</span>
+                                toggleSource={(s) => toggleSource(s, editIncomeForm, setEditIncomeForm)} />
+                            ) : (
+                              <ExpenseFormFields form={editExpenseForm} setForm={setEditExpenseForm} />
+                            )}
+                            <div className="flex gap-2 mt-3">
+                              <button onClick={row.kind === 'income' ? saveIncome : saveExpense} disabled={saving}
+                                className="flex items-center gap-1 bg-indigo-500 text-white px-4 py-1.5 rounded-lg text-xs font-semibold hover:bg-indigo-600 disabled:opacity-60">
+                                <Check size={12} /> {saving ? 'บันทึก...' : 'บันทึก'}
+                              </button>
+                              <button onClick={() => { setEditingId(null); setEditType(null) }}
+                                className="flex items-center gap-1 border border-gray-300 px-4 py-1.5 rounded-lg text-xs hover:bg-gray-50">
+                                <X size={12} /> ยกเลิก
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    }
+                    const isIncome = row.kind === 'income'
+                    const irec = isIncome ? (row.rec as IncomeRecord) : null
+                    const erec = !isIncome ? (row.rec as ExpenseRecord) : null
+                    const dateStr = row.rec.transaction_date
+                    return (
+                      <tr key={row.rec.id} className={`hover:bg-gray-50/60 group transition ${isIncome ? 'border-l-2 border-l-emerald-200' : 'border-l-2 border-l-rose-200'}`}>
+                        <td className="px-4 py-2.5 text-center text-gray-400 text-xs">{idx + 1}</td>
+                        <td className="px-4 py-2.5 text-gray-500 text-xs whitespace-nowrap">
+                          {dateStr ? formatDateShort(dateStr) : <span className="text-gray-300">—</span>}
+                        </td>
+                        <td className="px-4 py-2.5">
+                          {irec && (
+                            <div>
+                              {irec.client_name && <p className="font-medium text-gray-800 leading-tight">{irec.client_name}</p>}
+                              {irec.description && <p className="text-xs text-gray-500">{irec.description}</p>}
+                              {irec.note && <p className="text-xs text-gray-400 italic">{irec.note}</p>}
+                              <div className="flex flex-wrap gap-1 mt-0.5">
+                                {(Array.isArray(irec.sources) ? irec.sources : []).map((s: string) => (
+                                  <span key={s} className={`text-xs px-1.5 py-0.5 rounded-full border ${sourceLabel(s).color}`}>{sourceLabel(s).label}</span>
                                 ))}
                               </div>
-                            </td>
-                            <td className="px-4 py-2.5 text-right font-bold text-orange-600 whitespace-nowrap">
-                              {formatCurrency(Number(r.amount))}
-                            </td>
-                            <td className="px-2 py-2.5">
-                              <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition">
-                                <button onClick={() => startEditIncome(r)} className="text-gray-400 hover:text-orange-600 p-1"><Pencil size={12} /></button>
-                                <button onClick={() => deleteIncome(r.id)} className="text-gray-300 hover:text-red-500 p-1"><Trash2 size={12} /></button>
-                              </div>
-                            </td>
-                          </tr>
-                        )
-                      ))}
-                    </tbody>
-                    <tfoot>
-                      <tr className="bg-orange-50 border-t border-orange-200">
-                        <td colSpan={3} className="px-4 py-3 text-sm font-semibold text-orange-700">รวมรายได้</td>
-                        <td className="px-4 py-3 text-right text-lg font-bold text-orange-600">{formatCurrency(totalIncome)}</td>
-                        <td />
+                            </div>
+                          )}
+                          {erec && (
+                            <div>
+                              {erec.description && <p className="font-medium text-gray-800 leading-tight">{erec.description}</p>}
+                              {erec.note && <p className="text-xs text-gray-400 italic">{erec.note}</p>}
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-4 py-2.5">
+                          {erec ? (
+                            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${catMeta(erec.category).bg} ${catMeta(erec.category).color}`}>
+                              {catMeta(erec.category).label}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-emerald-600 font-medium">รายรับ</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-2.5 text-right font-semibold text-emerald-600 whitespace-nowrap">
+                          {isIncome ? formatCurrency(Number(row.rec.amount)) : ''}
+                        </td>
+                        <td className="px-4 py-2.5 text-right font-semibold text-rose-600 whitespace-nowrap">
+                          {!isIncome ? formatCurrency(Number(row.rec.amount)) : ''}
+                        </td>
+                        <td className={`px-4 py-2.5 text-right font-bold whitespace-nowrap ${row.balance >= 0 ? 'text-indigo-600' : 'text-red-500'}`}>
+                          {formatCurrency(row.balance)}
+                        </td>
+                        <td className="px-2 py-2.5">
+                          <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition">
+                            <button onClick={() => isIncome ? startEditIncome(row.rec as IncomeRecord) : startEditExpense(row.rec as ExpenseRecord)}
+                              className="text-gray-400 hover:text-indigo-600 p-1"><Pencil size={12} /></button>
+                            <button onClick={() => isIncome ? deleteIncome(row.rec.id) : deleteExpense(row.rec.id)}
+                              className="text-gray-300 hover:text-red-500 p-1"><Trash2 size={12} /></button>
+                          </div>
+                        </td>
                       </tr>
-                    </tfoot>
-                  </table>
-                )}
-              </div>
-            </div>
-
-            {/* ── Expense ── */}
-            <div className="bg-white rounded-2xl border border-rose-100 shadow-sm overflow-hidden">
-              <div className="flex items-center justify-between px-5 py-4 bg-gradient-to-r from-rose-50 to-pink-50 border-b border-rose-100">
-                <div>
-                  <h3 className="font-bold text-rose-800">💸 ซื้อของในบริษัท / รายจ่าย</h3>
-                  <p className="text-xs text-rose-400">{MONTH_FULL[month-1]} {year+543}</p>
-                </div>
-                <button onClick={() => { setShowExpenseForm(v => !v); setShowIncomeForm(false); setEditingExpenseId(null) }}
-                  className="flex items-center gap-1.5 bg-rose-500 text-white px-3 py-1.5 rounded-xl text-xs font-semibold hover:bg-rose-600 shadow-sm">
-                  <Plus size={13} /> เพิ่มรายจ่าย
-                </button>
-              </div>
-
-              {/* Add expense form */}
-              {showExpenseForm && (
-                <div className="px-5 py-4 border-b border-rose-100 bg-rose-50/50 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm font-semibold text-rose-700">+ รายจ่ายใหม่</p>
-                    <button onClick={() => setShowExpenseForm(false)}><X size={15} className="text-gray-400" /></button>
-                  </div>
-                  <ExpenseFormFields form={expenseForm} setForm={setExpenseForm} />
-                  <button onClick={addExpense} className="w-full bg-rose-500 text-white py-2 rounded-xl text-sm font-semibold hover:bg-rose-600">💾 บันทึกรายจ่าย</button>
-                </div>
-              )}
-
-              {/* Expense table */}
-              <div className="overflow-x-auto">
-                {sortedExpenses.length === 0 ? (
-                  <p className="px-5 py-8 text-center text-gray-300 text-sm">ยังไม่มีรายจ่ายเดือนนี้</p>
-                ) : (
-                  <table className="w-full text-sm">
-                    <thead className="bg-rose-50 text-rose-600 text-xs">
-                      <tr>
-                        <th className="px-4 py-2 text-left font-semibold">วันที่</th>
-                        <th className="px-4 py-2 text-left font-semibold">หมวดหมู่</th>
-                        <th className="px-4 py-2 text-left font-semibold">รายละเอียด</th>
-                        <th className="px-4 py-2 text-right font-semibold">ยอด</th>
-                        <th className="px-2 py-2 w-14"></th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-rose-50">
-                      {sortedExpenses.map(r => (
-                        editingExpenseId === r.id ? (
-                          /* ─── Edit row ─── */
-                          <tr key={r.id} className="bg-rose-50/60">
-                            <td colSpan={5} className="px-4 py-3">
-                              <ExpenseFormFields form={editExpenseForm} setForm={setEditExpenseForm} />
-                              <div className="flex gap-2 mt-3">
-                                <button onClick={saveExpense} disabled={saving}
-                                  className="flex items-center gap-1 bg-rose-500 text-white px-4 py-1.5 rounded-lg text-xs font-semibold hover:bg-rose-600 disabled:opacity-60">
-                                  <Check size={12} /> {saving ? 'บันทึก...' : 'บันทึก'}
-                                </button>
-                                <button onClick={() => setEditingExpenseId(null)}
-                                  className="flex items-center gap-1 border border-gray-300 px-4 py-1.5 rounded-lg text-xs hover:bg-gray-50">
-                                  <X size={12} /> ยกเลิก
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        ) : (
-                          /* ─── Normal row ─── */
-                          <tr key={r.id} className="hover:bg-rose-50/40 group">
-                            <td className="px-4 py-2.5 whitespace-nowrap">
-                              <div className="flex items-center gap-1 text-gray-500 text-xs">
-                                <Calendar size={11} className="text-rose-400" />
-                                {r.transaction_date ? formatDate(r.transaction_date) : <span className="text-gray-300">—</span>}
-                              </div>
-                            </td>
-                            <td className="px-4 py-2.5">
-                              <span className={`text-xs font-semibold ${catMeta(r.category).color}`}>{catMeta(r.category).label}</span>
-                            </td>
-                            <td className="px-4 py-2.5">
-                              {r.description && <p className="text-gray-700">{r.description}</p>}
-                              {r.note && <p className="text-xs text-gray-400 italic">{r.note}</p>}
-                            </td>
-                            <td className="px-4 py-2.5 text-right font-bold text-rose-600 whitespace-nowrap">
-                              {formatCurrency(Number(r.amount))}
-                            </td>
-                            <td className="px-2 py-2.5">
-                              <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition">
-                                <button onClick={() => startEditExpense(r)} className="text-gray-400 hover:text-rose-600 p-1"><Pencil size={12} /></button>
-                                <button onClick={() => deleteExpense(r.id)} className="text-gray-300 hover:text-red-500 p-1"><Trash2 size={12} /></button>
-                              </div>
-                            </td>
-                          </tr>
-                        )
-                      ))}
-                    </tbody>
-                    <tfoot>
-                      <tr className="bg-rose-50 border-t border-rose-200">
-                        <td colSpan={3} className="px-4 py-3 text-sm font-semibold text-rose-700">รวมรายจ่าย</td>
-                        <td className="px-4 py-3 text-right text-lg font-bold text-rose-600">{formatCurrency(totalExpense)}</td>
-                        <td />
-                      </tr>
-                    </tfoot>
-                  </table>
-                )}
-              </div>
-            </div>
+                    )
+                  })}
+                </tbody>
+                <tfoot className="border-t-2 border-gray-200">
+                  <tr className="bg-gray-50 font-semibold text-sm">
+                    <td colSpan={4} className="px-4 py-3 text-gray-600">รวมทั้งหมด</td>
+                    <td className="px-4 py-3 text-right text-emerald-600">{formatCurrency(totalIncome)}</td>
+                    <td className="px-4 py-3 text-right text-rose-600">{formatCurrency(totalExpense)}</td>
+                    <td className={`px-4 py-3 text-right font-bold ${netProfit >= 0 ? 'text-indigo-600' : 'text-red-500'}`}>{formatCurrency(netProfit)}</td>
+                    <td />
+                  </tr>
+                </tfoot>
+              </table>
+            )}
           </div>
         </>
       )}
@@ -487,20 +437,17 @@ export default function FinanceTab() {
   )
 }
 
-// ─── Reusable form fields ──────────────────────────────────────────────────────
-function IncomeFormFields({ form, setForm, toggleSource, borderColor = 'orange' }: {
+// ─── Form fields ──────────────────────────────────────────────────────────────
+function IncomeFormFields({ form, setForm, toggleSource }: {
   form: { amount: string; sources: string[]; client_name: string; description: string; note: string; transaction_date: string }
   setForm: (v: typeof form) => void
   toggleSource: (s: string) => void
-  borderColor?: string
 }) {
-  const ring = `focus:ring-${borderColor}-400`
-  const border = `border-${borderColor}-200`
-  const cls = `w-full border ${border} rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 ${ring}`
+  const cls = 'w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400'
   return (
     <div className="grid grid-cols-2 gap-3">
       <div>
-        <label className="block text-xs font-medium text-gray-600 mb-1">📅 วันที่ *</label>
+        <label className="block text-xs font-medium text-gray-600 mb-1">วันที่ *</label>
         <input type="date" value={form.transaction_date} onChange={e => setForm({...form, transaction_date: e.target.value})} className={cls} />
       </div>
       <div>
@@ -508,11 +455,11 @@ function IncomeFormFields({ form, setForm, toggleSource, borderColor = 'orange' 
         <input type="number" value={form.amount} onChange={e => setForm({...form, amount: e.target.value})} placeholder="0.00" className={cls} />
       </div>
       <div className="col-span-2">
-        <label className="block text-xs font-medium text-gray-600 mb-1">แหล่งรายได้</label>
-        <div className="flex flex-wrap gap-2">
+        <label className="block text-xs font-medium text-gray-600 mb-1">ประเภทรายรับ</label>
+        <div className="flex flex-wrap gap-1.5">
           {INCOME_SOURCES.map(s => (
             <button key={s.val} type="button" onClick={() => toggleSource(s.val)}
-              className={`px-3 py-1 rounded-full text-xs font-medium border transition ${form.sources.includes(s.val) ? s.color + ' border-current' : 'border-gray-200 text-gray-400 hover:border-gray-300'}`}>
+              className={`px-2.5 py-1 rounded-full text-xs font-medium border transition ${form.sources.includes(s.val) ? s.color + ' border-current' : 'border-gray-200 text-gray-400 hover:border-gray-300'}`}>
               {s.label}
             </button>
           ))}
@@ -538,11 +485,11 @@ function ExpenseFormFields({ form, setForm }: {
   form: { category: string; amount: string; description: string; note: string; transaction_date: string }
   setForm: (v: typeof form) => void
 }) {
-  const cls = 'w-full border border-rose-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-400'
+  const cls = 'w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-400'
   return (
     <div className="grid grid-cols-2 gap-3">
       <div>
-        <label className="block text-xs font-medium text-gray-600 mb-1">📅 วันที่ *</label>
+        <label className="block text-xs font-medium text-gray-600 mb-1">วันที่ *</label>
         <input type="date" value={form.transaction_date} onChange={e => setForm({...form, transaction_date: e.target.value})} className={cls} />
       </div>
       <div>
@@ -567,83 +514,140 @@ function ExpenseFormFields({ form, setForm }: {
   )
 }
 
-// ─── Yearly View ──────────────────────────────────────────────────────────────
-function YearView({ data, year, yearTotal, setYear, onClickMonth }: {
+// ─── Yearly P&L View ─────────────────────────────────────────────────────────
+function YearView({ data, year, yearTotal, allIncomes, allExpenses, setYear, onClickMonth }: {
   data: { month: number; inc: number; exp: number; net: number }[]
   year: number
   yearTotal: { inc: number; exp: number }
+  allIncomes: IncomeRecord[]
+  allExpenses: ExpenseRecord[]
   setYear: (y: number) => void
   onClickMonth: (m: number) => void
 }) {
-  const maxVal = Math.max(...data.map(d => Math.max(d.inc, d.exp)), 1)
+  // Income by source × month
+  const incBySource = INCOME_SOURCES.map(src => ({
+    ...src,
+    monthly: Array.from({ length: 12 }, (_, i) =>
+      allIncomes.filter(r => r.month === i+1 && (Array.isArray(r.sources) ? r.sources.includes(src.val) : false))
+        .reduce((s, r) => s + Number(r.amount), 0)
+    ),
+    total: allIncomes.filter(r => Array.isArray(r.sources) && r.sources.includes(src.val))
+      .reduce((s, r) => s + Number(r.amount), 0),
+  })).filter(src => src.total > 0)
+
+  // Expense by category × month
+  const expByCat = EXPENSE_CATEGORIES.map(cat => ({
+    ...cat,
+    monthly: Array.from({ length: 12 }, (_, i) =>
+      allExpenses.filter(r => r.month === i+1 && r.category === cat.val)
+        .reduce((s, r) => s + Number(r.amount), 0)
+    ),
+    total: allExpenses.filter(r => r.category === cat.val)
+      .reduce((s, r) => s + Number(r.amount), 0),
+  })).filter(cat => cat.total > 0)
+
+  const fmt = (v: number) => v === 0 ? '—' : formatCurrency(v)
+
   return (
     <div className="space-y-4">
+      {/* Year nav + summary */}
       <div className="flex items-center justify-between">
-        <h3 className="font-bold text-gray-800">ภาพรวมปี {year + 543}</h3>
+        <h3 className="font-bold text-gray-800">สรุปรายปี {year + 543}</h3>
         <div className="flex items-center gap-1 bg-white border border-orange-200 rounded-lg px-1">
           <button onClick={() => setYear(year - 1)} className="p-1.5 hover:bg-orange-50 rounded text-orange-500"><ChevronLeft size={15} /></button>
           <span className="text-sm font-semibold px-2 text-orange-700">{year + 543}</span>
           <button onClick={() => setYear(year + 1)} className="p-1.5 hover:bg-orange-50 rounded text-orange-500"><ChevronRight size={15} /></button>
         </div>
       </div>
-      <div className="grid grid-cols-3 gap-4">
-        <div className="bg-orange-50 border border-orange-200 rounded-2xl p-4 text-center">
-          <p className="text-xs text-orange-500 mb-1">รายได้รวมปี</p>
-          <p className="text-2xl font-bold text-orange-600">{formatCurrency(yearTotal.inc)}</p>
+
+      <div className="grid grid-cols-3 gap-3">
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-center">
+          <p className="text-xs text-emerald-600 mb-1">รายรับรวมปี</p>
+          <p className="text-2xl font-bold text-emerald-600">{formatCurrency(yearTotal.inc)}</p>
         </div>
-        <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4 text-center">
-          <p className="text-xs text-rose-500 mb-1">รายจ่ายรวมปี</p>
+        <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 text-center">
+          <p className="text-xs text-rose-600 mb-1">รายจ่ายรวมปี</p>
           <p className="text-2xl font-bold text-rose-600">{formatCurrency(yearTotal.exp)}</p>
         </div>
-        <div className={`${yearTotal.inc-yearTotal.exp >= 0 ? 'bg-emerald-50 border-emerald-200' : 'bg-gray-50 border-gray-200'} border rounded-2xl p-4 text-center`}>
-          <p className={`text-xs mb-1 ${yearTotal.inc-yearTotal.exp >= 0 ? 'text-emerald-500' : 'text-gray-400'}`}>กำไร/ขาดทุนรวมปี</p>
-          <p className={`text-2xl font-bold ${yearTotal.inc-yearTotal.exp >= 0 ? 'text-emerald-600' : 'text-gray-500'}`}>{formatCurrency(yearTotal.inc-yearTotal.exp)}</p>
+        <div className={`${yearTotal.inc-yearTotal.exp >= 0 ? 'bg-indigo-50 border-indigo-200' : 'bg-gray-50 border-gray-200'} border rounded-xl p-4 text-center`}>
+          <p className={`text-xs mb-1 ${yearTotal.inc-yearTotal.exp >= 0 ? 'text-indigo-600' : 'text-gray-500'}`}>กำไร / ขาดทุนรวมปี</p>
+          <p className={`text-2xl font-bold ${yearTotal.inc-yearTotal.exp >= 0 ? 'text-indigo-600' : 'text-red-500'}`}>{formatCurrency(yearTotal.inc-yearTotal.exp)}</p>
         </div>
       </div>
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-        <div className="flex gap-4 text-xs text-gray-400 mb-4">
-          <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-orange-400 inline-block" />รายได้</span>
-          <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-rose-400 inline-block" />รายจ่าย</span>
-        </div>
-        <div className="flex items-end gap-1 h-36">
-          {data.map(d => (
-            <div key={d.month} className="flex-1 flex flex-col items-center gap-1 cursor-pointer group" onClick={() => onClickMonth(d.month)}>
-              <div className="w-full flex gap-0.5 items-end" style={{ height: '112px' }}>
-                <div className="flex-1 bg-orange-400 rounded-t group-hover:bg-orange-500 transition-all" style={{ height: `${(d.inc/maxVal)*100}%`, minHeight: d.inc > 0 ? '4px' : '0' }} />
-                <div className="flex-1 bg-rose-400 rounded-t group-hover:bg-rose-500 transition-all" style={{ height: `${(d.exp/maxVal)*100}%`, minHeight: d.exp > 0 ? '4px' : '0' }} />
-              </div>
-              <span className="text-xs text-gray-400 group-hover:text-orange-600">{MONTHS[d.month-1]}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-orange-50 text-orange-700 text-xs">
-            <tr>
-              <th className="px-4 py-3 text-left">เดือน</th>
-              <th className="px-4 py-3 text-right">รายได้</th>
-              <th className="px-4 py-3 text-right">รายจ่าย</th>
-              <th className="px-4 py-3 text-right">กำไร/ขาดทุน</th>
+
+      {/* P&L Table */}
+      <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-auto">
+        <table className="text-xs w-full border-collapse" style={{minWidth:'900px'}}>
+          <thead>
+            <tr className="bg-gray-50 border-b border-gray-200">
+              <th className="sticky left-0 bg-gray-50 px-4 py-3 text-left font-semibold text-gray-600 border-r border-gray-200 min-w-[160px]">รายการ</th>
+              {MONTHS.map((m, i) => (
+                <th key={i} onClick={() => onClickMonth(i+1)}
+                  className="px-3 py-3 text-center font-semibold text-gray-500 cursor-pointer hover:text-orange-600 hover:bg-orange-50 transition min-w-[80px]">
+                  {m}
+                </th>
+              ))}
+              <th className="px-4 py-3 text-right font-bold text-gray-700 min-w-[90px]">รวม</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-50">
-            {data.map(d => (
-              <tr key={d.month} onClick={() => onClickMonth(d.month)}
-                className={`hover:bg-orange-50 cursor-pointer transition ${d.inc === 0 && d.exp === 0 ? 'opacity-40' : ''}`}>
-                <td className="px-4 py-2.5 font-medium text-gray-700">{MONTHS[d.month-1]}</td>
-                <td className="px-4 py-2.5 text-right text-orange-600 font-medium">{d.inc > 0 ? formatCurrency(d.inc) : '—'}</td>
-                <td className="px-4 py-2.5 text-right text-rose-600 font-medium">{d.exp > 0 ? formatCurrency(d.exp) : '—'}</td>
-                <td className={`px-4 py-2.5 text-right font-bold ${d.net > 0 ? 'text-emerald-600' : d.net < 0 ? 'text-red-500' : 'text-gray-300'}`}>
-                  {d.inc > 0 || d.exp > 0 ? formatCurrency(d.net) : '—'}
-                </td>
+          <tbody>
+            {/* ── Income section ── */}
+            <tr className="bg-emerald-50 border-y border-emerald-100">
+              <td colSpan={14} className="sticky left-0 px-4 py-2 font-bold text-emerald-700 text-xs uppercase tracking-wide">💵 รายรับ</td>
+            </tr>
+            {incBySource.map(src => (
+              <tr key={src.val} className="hover:bg-emerald-50/30 border-b border-gray-50">
+                <td className="sticky left-0 bg-white px-4 py-2.5 text-gray-700 font-medium border-r border-gray-100">{src.label}</td>
+                {src.monthly.map((v, i) => (
+                  <td key={i} className={`px-3 py-2.5 text-right ${v > 0 ? 'text-emerald-600 font-medium' : 'text-gray-300'}`}>{fmt(v)}</td>
+                ))}
+                <td className="px-4 py-2.5 text-right font-bold text-emerald-600">{formatCurrency(src.total)}</td>
               </tr>
             ))}
-            <tr className="bg-orange-50 font-bold">
-              <td className="px-4 py-3 text-orange-700">รวมทั้งปี</td>
-              <td className="px-4 py-3 text-right text-orange-600">{formatCurrency(yearTotal.inc)}</td>
-              <td className="px-4 py-3 text-right text-rose-600">{formatCurrency(yearTotal.exp)}</td>
-              <td className={`px-4 py-3 text-right ${yearTotal.inc-yearTotal.exp >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>{formatCurrency(yearTotal.inc-yearTotal.exp)}</td>
+            {/* Income total row */}
+            <tr className="bg-emerald-50 border-y border-emerald-200 font-bold">
+              <td className="sticky left-0 bg-emerald-50 px-4 py-2.5 text-emerald-700 border-r border-emerald-200">รวมรายรับ</td>
+              {data.map((d, i) => (
+                <td key={i} className={`px-3 py-2.5 text-right ${d.inc > 0 ? 'text-emerald-700' : 'text-gray-300'}`}>{fmt(d.inc)}</td>
+              ))}
+              <td className="px-4 py-2.5 text-right text-emerald-700">{formatCurrency(yearTotal.inc)}</td>
+            </tr>
+
+            {/* ── Expense section ── */}
+            <tr className="bg-rose-50 border-y border-rose-100">
+              <td colSpan={14} className="sticky left-0 px-4 py-2 font-bold text-rose-700 text-xs uppercase tracking-wide">💸 รายจ่าย</td>
+            </tr>
+            {expByCat.map(cat => (
+              <tr key={cat.val} className="hover:bg-rose-50/30 border-b border-gray-50">
+                <td className="sticky left-0 bg-white px-4 py-2.5 border-r border-gray-100">
+                  <span className={`font-medium ${cat.color}`}>{cat.label}</span>
+                </td>
+                {cat.monthly.map((v, i) => (
+                  <td key={i} className={`px-3 py-2.5 text-right ${v > 0 ? 'text-rose-600 font-medium' : 'text-gray-300'}`}>{fmt(v)}</td>
+                ))}
+                <td className="px-4 py-2.5 text-right font-bold text-rose-600">{formatCurrency(cat.total)}</td>
+              </tr>
+            ))}
+            {/* Expense total row */}
+            <tr className="bg-rose-50 border-y border-rose-200 font-bold">
+              <td className="sticky left-0 bg-rose-50 px-4 py-2.5 text-rose-700 border-r border-rose-200">รวมรายจ่าย</td>
+              {data.map((d, i) => (
+                <td key={i} className={`px-3 py-2.5 text-right ${d.exp > 0 ? 'text-rose-700' : 'text-gray-300'}`}>{fmt(d.exp)}</td>
+              ))}
+              <td className="px-4 py-2.5 text-right text-rose-700">{formatCurrency(yearTotal.exp)}</td>
+            </tr>
+
+            {/* ── Net row ── */}
+            <tr className="border-t-2 border-gray-300 bg-gray-50 font-bold">
+              <td className="sticky left-0 bg-gray-50 px-4 py-3 text-gray-800 border-r border-gray-200">กำไร / ขาดทุน</td>
+              {data.map((d, i) => (
+                <td key={i} className={`px-3 py-3 text-right ${d.net > 0 ? 'text-indigo-600' : d.net < 0 ? 'text-red-500' : 'text-gray-300'}`}>
+                  {d.inc > 0 || d.exp > 0 ? fmt(d.net) : '—'}
+                </td>
+              ))}
+              <td className={`px-4 py-3 text-right text-base ${yearTotal.inc-yearTotal.exp >= 0 ? 'text-indigo-600' : 'text-red-500'}`}>
+                {formatCurrency(yearTotal.inc - yearTotal.exp)}
+              </td>
             </tr>
           </tbody>
         </table>
