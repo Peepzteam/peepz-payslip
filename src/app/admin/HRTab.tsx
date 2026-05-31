@@ -2,7 +2,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { Employee } from '@/types'
 import { formatCurrency } from '@/lib/utils'
-import { ChevronLeft, ChevronRight, Users, Clock, Calendar, TrendingUp, AlertCircle, Download, X, Save, CalendarRange } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Users, Clock, Calendar, TrendingUp, AlertCircle, Download, X, Save, CalendarRange, PlusCircle, Trash2 } from 'lucide-react'
 
 interface WorkRecord {
   id?: string
@@ -30,6 +30,24 @@ interface CompanyHoliday {
   year: number
 }
 
+interface LeaveRecord {
+  id: string
+  employee_id: string
+  leave_type: 'sick' | 'vacation' | 'personal' | 'other'
+  start_date: string
+  end_date: string
+  days: number
+  note: string | null
+  year: number
+}
+
+const LEAVE_TYPES = [
+  { val: 'sick',     label: 'ลาป่วย',      quota: 30, color: 'bg-blue-100 text-blue-700 border-blue-200' },
+  { val: 'vacation', label: 'ลาพักร้อน',   quota: 6,  color: 'bg-purple-100 text-purple-700 border-purple-200' },
+  { val: 'personal', label: 'ลากิจ',        quota: 6,  color: 'bg-orange-100 text-orange-700 border-orange-200' },
+  { val: 'other',    label: 'ลาอื่นๆ',      quota: 0,  color: 'bg-gray-100 text-gray-700 border-gray-200' },
+]
+
 const STATUS_OPTIONS = [
   { val: 'present',        label: 'มาทำงาน',     color: 'bg-green-100 text-green-700 border-green-200',   dot: 'bg-green-500' },
   { val: 'late',           label: 'มาสาย',        color: 'bg-yellow-100 text-yellow-700 border-yellow-200', dot: 'bg-yellow-500' },
@@ -47,7 +65,7 @@ export default function HRTab() {
   const now = new Date()
   const [month, setMonth] = useState(now.getMonth() + 1)
   const [year, setYear] = useState(now.getFullYear())
-  const [subTab, setSubTab] = useState<'dashboard' | 'attendance'>('dashboard')
+  const [subTab, setSubTab] = useState<'dashboard' | 'attendance' | 'leave'>('dashboard')
 
   const [employees, setEmployees] = useState<Employee[]>([])
   const [selectedEmpIds, setSelectedEmpIds] = useState<Set<string>>(new Set())
@@ -56,7 +74,13 @@ export default function HRTab() {
   const [payslips, setPayslips] = useState<PayslipSummary[]>([])
   const [prevPayslips, setPrevPayslips] = useState<PayslipSummary[]>([])
   const [holidays, setHolidays] = useState<CompanyHoliday[]>([])
+  const [leaveRecords, setLeaveRecords] = useState<LeaveRecord[]>([])
   const [loading, setLoading] = useState(true)
+
+  // Leave form
+  const EMPTY_LEAVE = { employee_id: '', leave_type: 'sick' as const, start_date: '', end_date: '', days: 1, note: '' }
+  const [leaveForm, setLeaveForm] = useState({ ...EMPTY_LEAVE })
+  const [leaveSaving, setLeaveSaving] = useState(false)
   const [saving, setSaving] = useState(false)
   const [edits, setEdits] = useState<Record<string, Partial<WorkRecord>>>({})
 
@@ -91,17 +115,18 @@ export default function HRTab() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [empRes, recRes, prevRecRes, payRes, prevPayRes, holRes] = await Promise.all([
+      const [empRes, recRes, prevRecRes, payRes, prevPayRes, holRes, leaveRes] = await Promise.all([
         fetch('/api/employees'),
         fetch(`/api/work-records?month=${month}&year=${year}`),
         fetch(`/api/work-records?month=${prevMonth}&year=${prevYear}`),
         fetch(`/api/payslips?month=${month}&year=${year}`),
         fetch(`/api/payslips?month=${prevMonth}&year=${prevYear}`),
         fetch(`/api/holidays?year=${year}`),
+        fetch(`/api/leave-records?year=${year}`),
       ])
       const safeJson = async (r: Response) => { try { return await r.json() } catch { return [] } }
-      const [emps, recs, prevRecs, pays, prevPays, hols] = await Promise.all([
-        safeJson(empRes), safeJson(recRes), safeJson(prevRecRes), safeJson(payRes), safeJson(prevPayRes), safeJson(holRes)
+      const [emps, recs, prevRecs, pays, prevPays, hols, leaves] = await Promise.all([
+        safeJson(empRes), safeJson(recRes), safeJson(prevRecRes), safeJson(payRes), safeJson(prevPayRes), safeJson(holRes), safeJson(leaveRes)
       ])
       const activeEmps: Employee[] = Array.isArray(emps) ? emps.filter((e: Employee) => e.is_active) : []
       setEmployees(activeEmps)
@@ -116,6 +141,7 @@ export default function HRTab() {
       setPayslips(Array.isArray(pays) ? pays : [])
       setPrevPayslips(Array.isArray(prevPays) ? prevPays : [])
       setHolidays(Array.isArray(hols) ? hols : [])
+      setLeaveRecords(Array.isArray(leaves) ? leaves : [])
     } catch (err) {
       console.error('HRTab load error:', err)
     } finally {
@@ -365,6 +391,49 @@ export default function HRTab() {
     return { d, pct: Math.round((d / prev) * 100), up: d >= 0 }
   }
 
+  // Calculate business days between two dates (excluding weekends)
+  function calcBusinessDays(from: string, to: string) {
+    if (!from || !to) return 1
+    let count = 0
+    const cur = new Date(from + 'T00:00:00')
+    const end = new Date(to + 'T00:00:00')
+    while (cur <= end) {
+      const dow = cur.getDay()
+      if (dow !== 0 && dow !== 6) count++
+      cur.setDate(cur.getDate() + 1)
+    }
+    return Math.max(1, count)
+  }
+
+  async function addLeave() {
+    if (!leaveForm.employee_id || !leaveForm.start_date || !leaveForm.end_date) {
+      alert('กรุณากรอกข้อมูลให้ครบ')
+      return
+    }
+    setLeaveSaving(true)
+    try {
+      const days = calcBusinessDays(leaveForm.start_date, leaveForm.end_date)
+      const leaveYear = new Date(leaveForm.start_date).getFullYear()
+      const res = await fetch('/api/leave-records', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...leaveForm, days, year: leaveYear }),
+      })
+      if (!res.ok) { const e = await res.json().catch(() => ({})); alert('บันทึกไม่สำเร็จ: ' + (e.error || res.status)); return }
+      setLeaveForm({ ...EMPTY_LEAVE })
+      await load()
+    } catch { alert('เกิดข้อผิดพลาด ไม่สามารถบันทึกการลาได้') } finally { setLeaveSaving(false) }
+  }
+
+  async function deleteLeave(id: string) {
+    if (!confirm('ลบรายการลานี้?')) return
+    try {
+      const res = await fetch(`/api/leave-records/${id}`, { method: 'DELETE' })
+      if (!res.ok) { const e = await res.json().catch(() => ({})); alert('ลบไม่สำเร็จ: ' + (e.error || res.status)); return }
+      await load()
+    } catch { alert('เกิดข้อผิดพลาด ไม่สามารถลบรายการลาได้') }
+  }
+
   function navigate(dir: number) {
     let m = month + dir, y = year
     if (m > 12) { m = 1; y++ }
@@ -451,10 +520,10 @@ export default function HRTab() {
               <button onClick={() => navigate(1)} className="p-1.5 hover:bg-gray-100 rounded"><ChevronRight size={15} /></button>
             </div>
             <div className="flex bg-gray-100 rounded-lg p-0.5">
-              {(['dashboard','attendance'] as const).map(t => (
+              {(['dashboard','attendance','leave'] as const).map(t => (
                 <button key={t} onClick={() => setSubTab(t)}
                   className={`px-3 py-1.5 rounded-md text-xs font-medium transition ${subTab===t ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500 hover:text-gray-700'}`}>
-                  {t === 'dashboard' ? '📊 Dashboard' : '📋 บันทึกการทำงาน'}
+                  {t === 'dashboard' ? '📊 Dashboard' : t === 'attendance' ? '📋 บันทึกการทำงาน' : '🏖️ วันลา'}
                 </button>
               ))}
             </div>
@@ -490,11 +559,22 @@ export default function HRTab() {
             employees={shownEmployees} records={records} payslips={payslips}
             holidays={holidays}
           />
-        ) : (
+        ) : subTab === 'attendance' ? (
           <AttendanceGrid
             employees={shownEmployees} days={days} year={year} month={month}
             getRecord={getRecord} openCell={openCell} holidays={holidays}
             onExportEmployee={exportEmployeePNG}
+          />
+        ) : (
+          <LeaveView
+            employees={employees}
+            leaveRecords={leaveRecords}
+            year={year}
+            leaveForm={leaveForm}
+            setLeaveForm={setLeaveForm}
+            leaveSaving={leaveSaving}
+            addLeave={addLeave}
+            deleteLeave={deleteLeave}
           />
         )}
         </div>
@@ -1012,6 +1092,193 @@ function AttendanceGrid({ employees, days, year, month, getRecord, openCell, hol
           })}
         </tbody>
       </table>
+    </div>
+  )
+}
+
+// ==================== LeaveView ====================
+interface LeaveViewProps {
+  employees: Employee[]
+  leaveRecords: LeaveRecord[]
+  year: number
+  leaveForm: { employee_id: string; leave_type: 'sick' | 'vacation' | 'personal' | 'other'; start_date: string; end_date: string; days: number; note: string }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  setLeaveForm: (f: any) => void
+  leaveSaving: boolean
+  addLeave: () => void
+  deleteLeave: (id: string) => void
+}
+
+function LeaveView({ employees, leaveRecords, year, leaveForm, setLeaveForm, leaveSaving, addLeave, deleteLeave }: LeaveViewProps) {
+  // Quota summary per employee
+  const quotaSummary = employees.map(emp => {
+    const empLeaves = leaveRecords.filter(l => l.employee_id === emp.id && l.year === year)
+    const usedSick = empLeaves.filter(l => l.leave_type === 'sick').reduce((s, l) => s + l.days, 0)
+    const usedVacation = empLeaves.filter(l => l.leave_type === 'vacation').reduce((s, l) => s + l.days, 0)
+    const usedPersonal = empLeaves.filter(l => l.leave_type === 'personal').reduce((s, l) => s + l.days, 0)
+    const usedOther = empLeaves.filter(l => l.leave_type === 'other').reduce((s, l) => s + l.days, 0)
+    return { emp, usedSick, usedVacation, usedPersonal, usedOther }
+  })
+
+  const empMap = new Map(employees.map(e => [e.id, e]))
+
+  function QuotaBar({ used, quota, color }: { used: number; quota: number; color: string }) {
+    if (quota === 0) return <span className="text-xs text-gray-400">{used} วัน</span>
+    const pct = Math.min(100, Math.round((used / quota) * 100))
+    const over = used > quota
+    return (
+      <div className="flex items-center gap-1.5">
+        <div className="w-20 h-2 bg-gray-100 rounded-full overflow-hidden">
+          <div className={`h-full rounded-full transition-all ${over ? 'bg-red-400' : color}`} style={{ width: `${pct}%` }} />
+        </div>
+        <span className={`text-xs font-medium ${over ? 'text-red-600' : 'text-gray-600'}`}>{used}/{quota}</span>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-6 p-1">
+      {/* Add Leave Form */}
+      <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
+        <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+          <PlusCircle size={15} className="text-indigo-500" /> บันทึกการลา
+        </h3>
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+          <div>
+            <label className="text-xs text-gray-500 mb-1 block">พนักงาน</label>
+            <select value={leaveForm.employee_id} onChange={e => setLeaveForm({ ...leaveForm, employee_id: e.target.value })}
+              className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">
+              <option value="">-- เลือกพนักงาน --</option>
+              {employees.map(emp => (
+                <option key={emp.id} value={emp.id}>{emp.name} ({emp.employee_code})</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs text-gray-500 mb-1 block">ประเภทการลา</label>
+            <select value={leaveForm.leave_type} onChange={e => setLeaveForm({ ...leaveForm, leave_type: e.target.value as LeaveRecord['leave_type'] })}
+              className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">
+              {LEAVE_TYPES.map(lt => <option key={lt.val} value={lt.val}>{lt.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs text-gray-500 mb-1 block">วันที่เริ่ม</label>
+            <input type="date" value={leaveForm.start_date} onChange={e => setLeaveForm({ ...leaveForm, start_date: e.target.value })}
+              className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+          </div>
+          <div>
+            <label className="text-xs text-gray-500 mb-1 block">วันที่สิ้นสุด</label>
+            <input type="date" value={leaveForm.end_date} onChange={e => setLeaveForm({ ...leaveForm, end_date: e.target.value })}
+              className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+          </div>
+          <div>
+            <label className="text-xs text-gray-500 mb-1 block">หมายเหตุ</label>
+            <input type="text" value={leaveForm.note} onChange={e => setLeaveForm({ ...leaveForm, note: e.target.value })}
+              placeholder="เช่น ไปหาหมอ"
+              className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+          </div>
+          <div className="flex items-end">
+            <button onClick={addLeave} disabled={leaveSaving}
+              className="w-full bg-indigo-600 text-white rounded-lg px-4 py-1.5 text-sm font-medium hover:bg-indigo-700 disabled:opacity-60 flex items-center justify-center gap-1.5">
+              <Save size={13} /> {leaveSaving ? 'กำลังบันทึก...' : 'บันทึก'}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Quota Summary */}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        <div className="px-4 py-3 border-b border-gray-100">
+          <h3 className="text-sm font-semibold text-gray-700">โควต้าวันลา ปี {year + 543}</h3>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-gray-50 text-gray-500 text-xs">
+                <th className="px-4 py-2 text-left font-medium">พนักงาน</th>
+                <th className="px-4 py-2 text-left font-medium">ลาป่วย (30 วัน)</th>
+                <th className="px-4 py-2 text-left font-medium">ลาพักร้อน (6 วัน)</th>
+                <th className="px-4 py-2 text-left font-medium">ลากิจ (6 วัน)</th>
+                <th className="px-4 py-2 text-left font-medium">ลาอื่นๆ</th>
+                <th className="px-4 py-2 text-center font-medium">รวม</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {quotaSummary.map(({ emp, usedSick, usedVacation, usedPersonal, usedOther }) => (
+                <tr key={emp.id} className="hover:bg-gray-50/50">
+                  <td className="px-4 py-2.5">
+                    <div className="font-medium text-gray-800 text-sm">{emp.name}</div>
+                    <div className="text-xs text-gray-400">{emp.employee_code} · {emp.type === 'fulltime' ? 'ประจำ' : 'ฟรีแลนซ์'}</div>
+                  </td>
+                  <td className="px-4 py-2.5"><QuotaBar used={usedSick} quota={30} color="bg-blue-400" /></td>
+                  <td className="px-4 py-2.5"><QuotaBar used={usedVacation} quota={6} color="bg-purple-400" /></td>
+                  <td className="px-4 py-2.5"><QuotaBar used={usedPersonal} quota={6} color="bg-orange-400" /></td>
+                  <td className="px-4 py-2.5"><span className="text-xs text-gray-500">{usedOther} วัน</span></td>
+                  <td className="px-4 py-2.5 text-center">
+                    <span className="bg-gray-100 text-gray-700 text-xs font-semibold px-2 py-0.5 rounded-full">
+                      {usedSick + usedVacation + usedPersonal + usedOther} วัน
+                    </span>
+                  </td>
+                </tr>
+              ))}
+              {quotaSummary.length === 0 && (
+                <tr><td colSpan={6} className="text-center text-gray-400 py-8 text-sm">ยังไม่มีข้อมูลพนักงาน</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Leave History */}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        <div className="px-4 py-3 border-b border-gray-100">
+          <h3 className="text-sm font-semibold text-gray-700">ประวัติการลา ปี {year + 543}</h3>
+        </div>
+        {leaveRecords.length === 0 ? (
+          <p className="text-center text-gray-400 py-8 text-sm">ยังไม่มีรายการลา</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-gray-50 text-gray-500 text-xs">
+                  <th className="px-4 py-2 text-left font-medium">พนักงาน</th>
+                  <th className="px-4 py-2 text-left font-medium">ประเภท</th>
+                  <th className="px-4 py-2 text-left font-medium">วันที่</th>
+                  <th className="px-4 py-2 text-center font-medium">จำนวน</th>
+                  <th className="px-4 py-2 text-left font-medium">หมายเหตุ</th>
+                  <th className="px-4 py-2" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {leaveRecords.map(l => {
+                  const emp = empMap.get(l.employee_id)
+                  const lt = LEAVE_TYPES.find(t => t.val === l.leave_type) ?? LEAVE_TYPES[3]
+                  return (
+                    <tr key={l.id} className="hover:bg-gray-50/50">
+                      <td className="px-4 py-2.5 font-medium text-gray-800">{emp?.name ?? '-'}</td>
+                      <td className="px-4 py-2.5">
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium border ${lt.color}`}>{lt.label}</span>
+                      </td>
+                      <td className="px-4 py-2.5 text-gray-600 text-xs">
+                        {l.start_date === l.end_date ? l.start_date : `${l.start_date} – ${l.end_date}`}
+                      </td>
+                      <td className="px-4 py-2.5 text-center">
+                        <span className="bg-gray-100 text-gray-700 text-xs font-semibold px-2 py-0.5 rounded-full">{l.days} วัน</span>
+                      </td>
+                      <td className="px-4 py-2.5 text-gray-500 text-xs">{l.note || '-'}</td>
+                      <td className="px-4 py-2.5 text-right">
+                        <button onClick={() => deleteLeave(l.id)} className="text-red-400 hover:text-red-600 p-1 rounded hover:bg-red-50 transition">
+                          <Trash2 size={13} />
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
