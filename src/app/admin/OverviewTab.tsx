@@ -69,17 +69,19 @@ export default function OverviewTab() {
               {payslips.map((p) => (
                 <tr key={p.id} className="hover:bg-gray-50">
                   <td className="px-4 py-3">
-                    <p className="font-medium text-gray-800">{p.employee?.name}</p>
-                    <p className="text-xs text-gray-400">{p.employee?.email}</p>
+                    <p className="font-medium text-gray-800">{p.employee?.name ?? p.guest_name ?? '—'}</p>
+                    <p className="text-xs text-gray-400">{p.employee?.email ?? p.guest_email ?? ''}</p>
                   </td>
                   <td className="px-4 py-3">
-                    <span className={`text-xs px-2 py-1 rounded-full ${
-                      p.employee?.type === 'freelance'
-                        ? 'bg-amber-100 text-amber-700'
-                        : 'bg-indigo-100 text-indigo-700'
-                    }`}>
-                      {p.employee?.type === 'freelance' ? 'Freelance' : 'ประจำ'}
-                    </span>
+                    {(() => {
+                      const type = p.employee?.type ?? p.guest_type ?? 'fulltime'
+                      const isFL = type === 'freelance'
+                      return (
+                        <span className={`text-xs px-2 py-1 rounded-full ${isFL ? 'bg-amber-100 text-amber-700' : 'bg-indigo-100 text-indigo-700'}`}>
+                          {isFL ? 'Freelance' : 'ประจำ'}
+                        </span>
+                      )
+                    })()}
                   </td>
                   <td className="px-4 py-3 text-right font-semibold text-gray-800">
                     {formatCurrency(p.net_pay)}
