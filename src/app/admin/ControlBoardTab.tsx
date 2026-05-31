@@ -490,12 +490,12 @@ export default function ControlBoardTab() {
         <p className="px-4 py-2 text-xs text-gray-400 bg-gray-50 border-b border-gray-100">
           💡 คลิกเซลล์สีเทาเพื่อแก้ไข | คลิกยอดแคมเปญเพื่อดูรายละเอียด
         </p>
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto overflow-y-auto max-h-[75vh]">
           <table className="w-full text-xs border-collapse">
             {/* Header */}
-            <thead>
+            <thead className="sticky top-0 z-30">
               <tr className="bg-gray-800 text-white">
-                <th className="px-3 py-2.5 text-left sticky left-0 bg-gray-800 z-20 min-w-[220px]">Objective</th>
+                <th className="px-3 py-2.5 text-left sticky left-0 bg-gray-800 z-40 min-w-[220px]">Objective</th>
                 {MONTHS_SHORT.map((m,i)=>(
                   <th key={i} className="px-2 py-2.5 text-center font-medium min-w-[80px]">{m}</th>
                 ))}
