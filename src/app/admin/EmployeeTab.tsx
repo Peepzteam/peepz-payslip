@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState, useRef } from 'react'
+import React, { useEffect, useState, useRef } from 'react'
 import { Employee, SalaryHistory } from '@/types'
 import { formatCurrency } from '@/lib/utils'
 import { Upload, UserPlus, Download, Pencil, X, Check, Trash2, ChevronDown, ChevronUp, Plus, History } from 'lucide-react'
@@ -113,14 +113,24 @@ export default function EmployeeTab() {
 
   async function saveEdit(id: string) {
     setSaving(true)
-    await fetch(`/api/employees/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...editForm, base_salary: Number(editForm.base_salary) || null, start_date: editForm.start_date || null }),
-    })
-    setSaving(false)
-    setEditingId(null)
-    loadEmployees()
+    try {
+      const res = await fetch(`/api/employees/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...editForm, base_salary: Number(editForm.base_salary) || null, start_date: editForm.start_date || null }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Unknown error' }))
+        alert('บันทึกไม่ได้: ' + (err.error || JSON.stringify(err)))
+        return
+      }
+      setEditingId(null)
+      await loadEmployees()
+    } catch (e) {
+      alert('เกิดข้อผิดพลาด: ' + String(e))
+    } finally {
+      setSaving(false)
+    }
   }
 
   async function addSalaryHistory(employeeId: string) {
@@ -250,7 +260,7 @@ export default function EmployeeTab() {
                 const history = salaryHistories[emp.id] || []
 
                 return (
-                  <>
+                  <React.Fragment key={emp.id}>
                     {editingId === emp.id ? (
                       /* ─── Edit row ─── */
                       <tr key={`edit-${emp.id}`} className="bg-indigo-50">
@@ -432,7 +442,7 @@ export default function EmployeeTab() {
                         </td>
                       </tr>
                     )}
-                  </>
+                  </React.Fragment>
                 )
               })}
             </tbody>
