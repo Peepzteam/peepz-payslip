@@ -3,7 +3,7 @@ import { useEffect, useState, useRef } from 'react'
 import { Employee, Payslip, LineItem, OtItem } from '@/types'
 import { formatCurrency, formatPeriod } from '@/lib/utils'
 import { Send, Upload, Plus, Download, Pencil, Trash2, Eye, X, Banknote } from 'lucide-react'
-import { calculateTax } from '@/lib/tax'
+import { calculateTax, calcSocialSecurity } from '@/lib/tax'
 import PayslipCard from '@/components/PayslipCard'
 
 const UNITS = ['ชม.', 'วัน', 'งาน', 'ครั้ง', 'เดือน', 'ชิ้น']
@@ -93,7 +93,7 @@ export default function PayslipTab() {
         Number(form.base_salary) || 0,
         otAmount,
         Number(form.incentive) || 0,
-        Number(form.social_security) || 875,
+        Number(form.social_security) || 0,
       )
     : null
 
@@ -111,11 +111,20 @@ export default function PayslipTab() {
   useEffect(() => {
     if (!selectedEmployee || editingPayslip) return
     const isFree = selectedEmployee.type === 'freelance'
+    const isOwner = selectedEmployee.is_owner === true
+    const salary = selectedEmployee.base_salary || 0
+    const ss = calcSocialSecurity(salary, isOwner, isFree)
+    // คำนวณภาษีหัก ณ ที่จ่ายเบื้องต้น
+    const taxPreview = !isFree && !isOwner && salary > 0
+      ? calculateTax(salary, 0, 0, ss)
+      : null
     setForm((prev) => ({
       ...prev,
       base_salary: selectedEmployee.base_salary?.toString() || prev.base_salary,
-      social_security: isFree ? '0' : '875',
-      withholding_tax: isFree ? '0' : String(Math.round((Number(prev.incentive) || 0) * 0.03 * 100) / 100),
+      social_security: String(ss),
+      withholding_tax: isFree
+        ? String(Math.round((Number(prev.incentive) || 0) * 0.03 * 100) / 100)
+        : String(taxPreview?.monthlyTax ?? 0),
     }))
     if (isFree) setLineItems([{ ...EMPTY_LINE }])
   // eslint-disable-next-line react-hooks/exhaustive-deps

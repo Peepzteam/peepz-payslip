@@ -12,6 +12,7 @@ export interface Employee {
   base_salary: number | null
   start_date: string | null
   is_active: boolean
+  is_owner: boolean
   created_at: string
 }
 

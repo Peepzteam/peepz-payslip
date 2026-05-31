@@ -36,7 +36,7 @@ export function calculateTax(
   monthlySalary: number,
   monthlyOtAvg = 0,
   monthlyIncentiveAvg = 0,
-  monthlySocialSecurity = 875,
+  monthlySocialSecurity = 0,
   extraAllowances = 0,
 ): TaxBreakdown {
   const annualIncome = (monthlySalary + monthlyOtAvg + monthlyIncentiveAvg) * 12
@@ -86,3 +86,22 @@ export function calculateTax(
 export const TAX_THRESHOLD_TAXABLE = 150_000
 /** เกณฑ์เงินเดือนต่อปี (approx.) ที่เริ่มต้องพิจารณาภาษี */
 export const MONTHLY_SALARY_THRESHOLD = 26_000
+
+/**
+ * คำนวณประกันสังคมพนักงาน (ฝั่งลูกจ้าง)
+ * อัตรา 5% ของเงินเดือน ฐานสูงสุด 17,500 บาท → สูงสุด 875 บาท/เดือน
+ * @param monthlySalary  เงินเดือน
+ * @param isOwner        เจ้าของบริษัท / ผู้ถือหุ้น → ยกเว้น = 0
+ * @param isFreelance    Freelance → ไม่หัก = 0
+ */
+export function calcSocialSecurity(
+  monthlySalary: number,
+  isOwner = false,
+  isFreelance = false,
+): number {
+  if (isOwner || isFreelance) return 0
+  const SS_CEILING = 17_500
+  const SS_RATE = 0.05
+  return Math.min(Math.round(monthlySalary * SS_RATE), Math.round(SS_CEILING * SS_RATE))
+  // = min(salary*5%, 875)
+}

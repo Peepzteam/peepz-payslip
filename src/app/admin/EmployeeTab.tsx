@@ -6,7 +6,7 @@ import { Upload, UserPlus, Download, Pencil, X, Check, Trash2, ChevronDown, Chev
 
 const EMPTY_FORM = {
   name: '', email: '', employee_code: '', type: 'fulltime',
-  department: '', position: '', base_salary: '', start_date: ''
+  department: '', position: '', base_salary: '', start_date: '', is_owner: false
 }
 
 function getProbationStatus(start_date: string | null): { label: string; color: string; detail: string } | null {
@@ -94,6 +94,7 @@ export default function EmployeeTab() {
       position: emp.position || '',
       base_salary: emp.base_salary?.toString() || '',
       start_date: emp.start_date || '',
+      is_owner: emp.is_owner ?? false,
     })
   }
 
@@ -282,6 +283,14 @@ export default function EmployeeTab() {
                             <Field label="📅 วันเริ่มงาน" type="date" value={editForm.start_date} onChange={(v) => setEditForm({ ...editForm, start_date: v })} />
                             <Field label="เงินเดือน (ปัจจุบัน)" type="number" value={editForm.base_salary} onChange={(v) => setEditForm({ ...editForm, base_salary: v })} />
                           </div>
+                          <div className="mb-3">
+                            <label className="flex items-center gap-2 cursor-pointer w-fit">
+                              <input type="checkbox" checked={!!editForm.is_owner}
+                                onChange={e => setEditForm({ ...editForm, is_owner: e.target.checked })}
+                                className="w-4 h-4 rounded accent-indigo-600" />
+                              <span className="text-sm text-gray-700 font-medium">👑 เจ้าของบริษัท / ผู้ถือหุ้น (ยกเว้นประกันสังคม)</span>
+                            </label>
+                          </div>
                           <div className="flex gap-2">
                             <button onClick={() => saveEdit(emp.id)} disabled={saving}
                               className="flex items-center gap-1 bg-green-600 text-white px-4 py-1.5 rounded-lg text-sm hover:bg-green-700 disabled:opacity-60">
@@ -310,6 +319,9 @@ export default function EmployeeTab() {
                           <span className={`text-xs px-2 py-1 rounded-full ${emp.type === 'freelance' ? 'bg-amber-100 text-amber-700' : 'bg-indigo-100 text-indigo-700'}`}>
                             {emp.type === 'freelance' ? 'Freelance' : 'ประจำ'}
                           </span>
+                          {emp.is_owner && (
+                            <span className="ml-1 text-xs px-1.5 py-0.5 rounded-full bg-yellow-100 text-yellow-700">👑 เจ้าของ</span>
+                          )}
                         </td>
                         <td className="px-4 py-3">
                           <p className="text-xs text-gray-500">{formatDateTH(emp.start_date)}</p>
