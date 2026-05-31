@@ -64,6 +64,7 @@ export default function PayslipTab() {
 
   const selectedEmployee = employees.find((e) => e.id === form.employee_id)
   const isFreelance = guestMode ? guestType === 'freelance' : selectedEmployee?.type === 'freelance'
+  const isOwner = !guestMode && selectedEmployee?.is_owner === true
 
   const dailyRate = (Number(form.base_salary) || 0) / 30
   const normalOtRate = Math.round(dailyRate / 8 * 1.5 * 100) / 100
@@ -100,14 +101,23 @@ export default function PayslipTab() {
       )
     : null
 
-  // Auto-calc WHT 3% ทุกครั้งที่ยอดรายได้เปลี่ยน
+  // Auto-calc WHT ตามแนวบัญชี:
+  // - Freelance: 3% ของค่าจ้างทั้งหมด
+  // - เจ้าของ: 3% ของ เงินเดือน+incentive (ค่าบริการกรรมการ)
+  // - พนักงานประจำ: 3% ของ incentive เท่านั้น (เงินเดือน+OT พนักงานยื่นภาษีเองปลายปี)
   useEffect(() => {
-    if (editingPayslip) return // ไม่ override ตอน edit
-    const gross = isFreelance ? lineItemsTotal : grossIncome
-    const wht = Math.round(gross * 0.03)
+    if (editingPayslip) return
+    let wht = 0
+    if (isFreelance) {
+      wht = Math.round(lineItemsTotal * 0.03)
+    } else if (isOwner) {
+      wht = Math.round(((Number(form.base_salary) || 0) + incentiveTotal) * 0.03)
+    } else {
+      wht = Math.round(incentiveTotal * 0.03)
+    }
     setForm((prev) => ({ ...prev, withholding_tax: String(wht) }))
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [grossIncome, lineItemsTotal, isFreelance])
+  }, [form.base_salary, incentiveTotal, lineItemsTotal, isFreelance, isOwner])
 
   useEffect(() => {
     fetch('/api/employees').then((r) => r.json()).then((d) => setEmployees(Array.isArray(d) ? d : []))
@@ -116,11 +126,11 @@ export default function PayslipTab() {
   useEffect(() => {
     if (!selectedEmployee || editingPayslip) return
     const isFree = selectedEmployee.type === 'freelance'
-    const isOwner = selectedEmployee.is_owner === true
+    const isOwnEmp = selectedEmployee.is_owner === true
     const salary = selectedEmployee.base_salary || 0
-    const ss = calcSocialSecurity(salary, isOwner, isFree)
-    // คำนวณภาษีหัก ณ ที่จ่ายเบื้องต้น
-    const wht = Math.round(salary * 0.03)
+    const ss = calcSocialSecurity(salary, isOwnEmp, isFree)
+    // WHT ตอนเลือก employee: ยังไม่มี incentive → owner = 3% เงินเดือน, อื่น = 0
+    const wht = isOwnEmp ? Math.round(salary * 0.03) : 0
     setForm((prev) => ({
       ...prev,
       base_salary: selectedEmployee.base_salary?.toString() || prev.base_salary,
@@ -202,17 +212,24 @@ export default function PayslipTab() {
       send_email: form.send_email,
       line_items: isFreelance ? lineItems.filter((i) => i.total > 0) : [],
     }
-    const res = await fetch('/api/payslips', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    })
-    if (res.ok) {
+    try {
+      const res = await fetch('/api/payslips', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        alert('บันทึกไม่สำเร็จ: ' + (d.error || `HTTP ${res.status}`))
+        return
+      }
       setShowForm(false)
       setOtItems([])
       setIncentiveItems([])
       fetch(`/api/payslips?month=${filterMonth}&year=${filterYear}`)
         .then((r) => r.json()).then((d) => setPayslips(Array.isArray(d) ? d : []))
+    } catch (err) {
+      alert('เกิดข้อผิดพลาด: ' + String(err))
     }
   }
 
