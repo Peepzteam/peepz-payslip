@@ -248,8 +248,10 @@ export default function HRTab() {
       const days = Array.from({ length: daysInMonth }, (_, i) => i + 1)
       const dayNames = ['อา','จ','อ','พ','พฤ','ศ','ส']
       const monthNames = ['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม']
-      const holidayDates = new Set(
-        holidays.filter(h => { const d = new Date(h.date+'T00:00:00'); return d.getMonth()+1===month && d.getFullYear()===year }).map(h => new Date(h.date+'T00:00:00').getDate())
+      const holidayMap = new Map(
+        holidays
+          .filter(h => { const d = new Date(h.date+'T00:00:00'); return d.getMonth()+1===month && d.getFullYear()===year })
+          .map(h => [new Date(h.date+'T00:00:00').getDate(), h.name])
       )
       const statusLabel: Record<string,string> = {
         present:'มาทำงาน', late:'มาสาย', absent:'ขาดงาน',
@@ -271,16 +273,18 @@ export default function HRTab() {
         const rec = edits[key] || records.find(r => r.employee_id === empId && r.date === dateStr) || {}
         const dow = new Date(year, month-1, d).getDay()
         const isWeekend = dow === 0 || dow === 6
-        const isHol = holidayDates.has(d)
+        const holName = holidayMap.get(d)
+        const isHol = !!holName
         const bg = isWeekend ? '#fff1f2' : isHol ? '#fffbeb' : '#ffffff'
         const st = rec.status as string | undefined
         const badge = st ? `<span style="background:${statusColor[st]||'#f3f4f6'};color:${statusText[st]||'#374151'};padding:2px 8px;border-radius:9999px;font-size:11px;font-weight:600;">${statusLabel[st]||st}</span>` : '<span style="color:#d1d5db;font-size:11px;">—</span>'
+        const holBadge = isHol ? `<span style="background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:9999px;font-size:10px;font-weight:600;margin-left:4px;">🏖️ ${holName}</span>` : ''
         const time = (rec.check_in || rec.check_out) ? `<div style="font-size:10px;color:#6b7280;margin-top:2px;">${rec.check_in||''}${rec.check_in&&rec.check_out?' – ':''}${rec.check_out||''}</div>` : ''
         const ot = Number(rec.ot_hours) > 0 ? `<div style="font-size:10px;color:#4f46e5;font-weight:600;">OT ${rec.ot_hours}h</div>` : ''
         return `<tr style="background:${bg};">
           <td style="padding:6px 10px;border-bottom:1px solid #f3f4f6;font-weight:600;color:#374151;width:40px;text-align:center;">${d}</td>
           <td style="padding:6px 10px;border-bottom:1px solid #f3f4f6;color:#9ca3af;width:30px;text-align:center;">${dayNames[dow]}</td>
-          <td style="padding:6px 10px;border-bottom:1px solid #f3f4f6;">${badge}${time}</td>
+          <td style="padding:6px 10px;border-bottom:1px solid #f3f4f6;">${badge}${holBadge}${time}</td>
           <td style="padding:6px 10px;border-bottom:1px solid #f3f4f6;text-align:right;">${ot}</td>
         </tr>`
       }).join('')
