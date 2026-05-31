@@ -8,9 +8,14 @@ export async function GET(req: NextRequest) {
   const month = searchParams.get('month')
   const year = searchParams.get('year')
 
+  const slim = searchParams.get('slim') === '1'
+  const selectFields = slim
+    ? 'id,period_month,period_year,base_salary,ot_amount,incentive,social_security,withholding_tax,net_pay,guest_type,employee:employees(type,is_owner)'
+    : '*, employee:employees(*)'
+
   let query = supabaseAdmin
     .from('payslips')
-    .select('*, employee:employees(*)')
+    .select(selectFields)
     .order('created_at', { ascending: false })
 
   if (month) query = query.eq('period_month', parseInt(month))
@@ -18,7 +23,7 @@ export async function GET(req: NextRequest) {
 
   const { data, error } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json(data)
+  return NextResponse.json(data, { headers: { 'Cache-Control': 'no-store' } })
 }
 
 export async function POST(req: NextRequest) {

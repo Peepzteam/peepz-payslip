@@ -93,12 +93,12 @@ export default function ControlBoardTab() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [cRes, eRes, pRes] = await Promise.all([
-        fetch(`/api/campaigns?year=${year}`),
-        fetch(`/api/control-entries?year=${year}`),
-        fetch(`/api/payslips?year=${year}`),
-      ])
       const safeJson = async (r: Response) => { try { return await r.json() } catch { return [] } }
+      const [cRes, eRes, pRes] = await Promise.all([
+        fetch(`/api/campaigns?year=${year}`, { cache: 'no-store' }),
+        fetch(`/api/control-entries?year=${year}`, { cache: 'no-store' }),
+        fetch(`/api/payslips?year=${year}&slim=1`, { cache: 'no-store' }),
+      ])
       const [c, e, p] = await Promise.all([safeJson(cRes), safeJson(eRes), safeJson(pRes)])
       setCampaigns(Array.isArray(c) ? c : [])
       setEntries(Array.isArray(e) ? e : [])
@@ -137,45 +137,69 @@ export default function ControlBoardTab() {
     return campaigns.filter(c => c.month === m && (!type || c.client_type === type))
   }
 
-  // ─── Save entry cell ───
+  // ─── Save entry cell (optimistic) ───
   async function saveCell(cat: string, m: number) {
     const amount = Number(cellVal) || 0
+    // Optimistic update — update state immediately, no full reload
+    setEntries(prev => {
+      const exists = prev.find(e => e.category === cat && e.month === m && e.year === year)
+      if (exists) return prev.map(e => e.category===cat && e.month===m && e.year===year ? {...e, amount} : e)
+      return [...prev, { id: `tmp-${cat}-${m}`, year, month: m, category: cat, amount, note: null }]
+    })
+    setEditingCell(null)
     try {
       const res = await fetch('/api/control-entries', {
         method: 'POST', headers: {'Content-Type':'application/json'},
         body: JSON.stringify({ year, month: m, category: cat, amount }),
       })
-      if (!res.ok) { alert('บันทึกไม่สำเร็จ'); return }
-      await load()
-    } catch { alert('เกิดข้อผิดพลาด') } finally { setEditingCell(null) }
+      if (!res.ok) { alert('บันทึกไม่สำเร็จ'); load(); return }
+      // Replace tmp id with real id from server
+      const saved: ControlEntry = await res.json().catch(() => null)
+      if (saved?.id) {
+        setEntries(prev => prev.map(e => e.id===`tmp-${cat}-${m}` ? saved : e))
+      }
+    } catch { alert('เกิดข้อผิดพลาด'); load() }
   }
 
-  // ─── Add Campaign ───
+  // ─── Add Campaign (optimistic) ───
   async function addCampaign() {
     if (!campForm.client_name || !campForm.revenue) { alert('กรอกชื่อลูกค้าและยอดขายด้วยนะคะ'); return }
     setCampSaving(true)
+    const payload = {
+      year, month: Number(campForm.month),
+      client_name: campForm.client_name, client_type: campForm.client_type,
+      service_type: campForm.service_type, campaign_name: campForm.campaign_name || null,
+      revenue: Number(campForm.revenue) || 0, cost: Number(campForm.cost) || 0,
+      note: campForm.note || null,
+    }
+    // Optimistic add
+    const tmpId = `tmp-${Date.now()}`
+    setCampaigns(prev => [...prev, { ...payload, id: tmpId }])
+    setCampForm({...EMPTY_C}); setShowCampForm(false)
     try {
       const res = await fetch('/api/campaigns', {
         method: 'POST', headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({
-          year, month: Number(campForm.month),
-          client_name: campForm.client_name, client_type: campForm.client_type,
-          service_type: campForm.service_type, campaign_name: campForm.campaign_name || null,
-          revenue: Number(campForm.revenue) || 0, cost: Number(campForm.cost) || 0,
-          note: campForm.note || null,
-        }),
+        body: JSON.stringify(payload),
       })
-      if (!res.ok) { const e = await res.json().catch(()=>({})); alert('บันทึกไม่สำเร็จ: '+(e.error||'')); return }
-      setCampForm({...EMPTY_C}); setShowCampForm(false); await load()
-    } catch { alert('เกิดข้อผิดพลาด') } finally { setCampSaving(false) }
+      if (!res.ok) {
+        const e = await res.json().catch(()=>({}))
+        alert('บันทึกไม่สำเร็จ: '+(e.error||''))
+        setCampaigns(prev => prev.filter(c => c.id !== tmpId)); return
+      }
+      const saved: Campaign = await res.json().catch(() => null)
+      if (saved?.id) setCampaigns(prev => prev.map(c => c.id===tmpId ? saved : c))
+    } catch { alert('เกิดข้อผิดพลาด'); setCampaigns(prev => prev.filter(c => c.id !== tmpId)) }
+    finally { setCampSaving(false) }
   }
 
   async function deleteCampaign(id: string) {
     if (!confirm('ลบแคมเปญนี้?')) return
+    // Optimistic remove
+    setCampaigns(prev => prev.filter(c => c.id !== id))
     try {
-      await fetch(`/api/campaigns/${id}`, { method: 'DELETE' })
-      await load()
-    } catch { alert('ลบไม่ได้') }
+      const res = await fetch(`/api/campaigns/${id}`, { method: 'DELETE' })
+      if (!res.ok) { alert('ลบไม่ได้'); load() }
+    } catch { alert('ลบไม่ได้'); load() }
   }
 
   // ─── Cell component ───
