@@ -3,6 +3,7 @@ import { useEffect, useState, useRef } from 'react'
 import { Employee, Payslip, LineItem } from '@/types'
 import { formatCurrency, formatPeriod } from '@/lib/utils'
 import { Send, Upload, Plus, Download, Pencil, Trash2, Eye, X, Banknote } from 'lucide-react'
+import { calculateTax } from '@/lib/tax'
 import PayslipCard from '@/components/PayslipCard'
 
 const UNITS = ['ชม.', 'วัน', 'งาน', 'ครั้ง', 'เดือน', 'ชิ้น']
@@ -28,6 +29,14 @@ export default function PayslipTab() {
   const [deleting, setDeleting] = useState<string | null>(null)
   const [lineItems, setLineItems] = useState<LineItem[]>([{ ...EMPTY_LINE }])
 
+  const [otType, setOtType] = useState<'normal' | 'holiday'>('normal')
+  const [holidayDays, setHolidayDays] = useState('')
+  const [holidayOtHours, setHolidayOtHours] = useState('')
+  const [guestMode, setGuestMode] = useState(false)
+  const [guestName, setGuestName] = useState('')
+  const [guestEmail, setGuestEmail] = useState('')
+  const [guestType, setGuestType] = useState<'fulltime' | 'freelance'>('freelance')
+
   const [form, setForm] = useState({
     employee_id: '',
     period_month: CURRENT_MONTH,
@@ -46,9 +55,14 @@ export default function PayslipTab() {
   const [confirmingSend, setConfirmingSend] = useState<string | null>(null)
 
   const selectedEmployee = employees.find((e) => e.id === form.employee_id)
-  const isFreelance = selectedEmployee?.type === 'freelance'
+  const isFreelance = guestMode ? guestType === 'freelance' : selectedEmployee?.type === 'freelance'
 
-  const otAmount = (Number(form.ot_hours) || 0) * (Number(form.ot_rate) || 0)
+  const dailyRate = (Number(form.base_salary) || 0) / 30
+  const normalOtRate = Math.round(dailyRate / 8 * 1.5 * 100) / 100   // ×1.5 วันทำงานปกติ
+  const holidayHourlyOtRate = Math.round(dailyRate / 8 * 3 * 100) / 100  // ×3 วันหยุด
+  const otAmount = otType === 'holiday'
+    ? (Number(holidayDays) || 0) * dailyRate + (Number(holidayOtHours) || 0) * holidayHourlyOtRate
+    : (Number(form.ot_hours) || 0) * normalOtRate
   const lineItemsTotal = lineItems.reduce((s, i) => s + (i.total || 0), 0)
   const grossIncome = isFreelance
     ? lineItemsTotal + (Number(form.other_income) || 0)
@@ -60,6 +74,16 @@ export default function PayslipTab() {
   const netPay = grossIncome - totalDeduction
 
   const subtotalBeforeIncentive = (Number(form.base_salary) || 0) - (Number(form.social_security) || 0) + otAmount
+
+  // คำนวณภาษีเงินได้บุคคลธรรมดา (พนักงานประจำเท่านั้น)
+  const taxCalc = !isFreelance && form.base_salary
+    ? calculateTax(
+        Number(form.base_salary) || 0,
+        otAmount,
+        Number(form.incentive) || 0,
+        Number(form.social_security) || 875,
+      )
+    : null
 
   // auto-update withholding_tax เมื่อ lineItems เปลี่ยน (freelance)
   useEffect(() => {
@@ -73,9 +97,9 @@ export default function PayslipTab() {
     fetch('/api/employees').then((r) => r.json()).then((d) => setEmployees(Array.isArray(d) ? d : []))
   }, [])
 
-  // Auto-fill when employee changes
+  // Auto-fill when employee changes (skip when editing existing payslip)
   useEffect(() => {
-    if (!selectedEmployee) return
+    if (!selectedEmployee || editingPayslip) return
     const isFree = selectedEmployee.type === 'freelance'
     setForm((prev) => ({
       ...prev,
@@ -97,12 +121,15 @@ export default function PayslipTab() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     const payload = {
-      employee_id: form.employee_id,
+      employee_id: guestMode ? null : form.employee_id,
+      guest_name: guestMode ? guestName : null,
+      guest_email: guestMode ? guestEmail : null,
+      guest_type: guestMode ? guestType : null,
       period_month: Number(form.period_month),
       period_year: Number(form.period_year),
       base_salary: Number(form.base_salary) || 0,
-      ot_hours: Number(form.ot_hours) || 0,
-      ot_rate: Number(form.ot_rate) || 0,
+      ot_hours: otType === 'holiday' ? Number(holidayOtHours) || 0 : Number(form.ot_hours) || 0,
+      ot_rate: otType === 'holiday' ? holidayHourlyOtRate : (Number(form.ot_rate) || normalOtRate),
       ot_amount: otAmount,
       incentive: Number(form.incentive) || 0,
       incentive_note: form.incentive_note,
@@ -171,7 +198,7 @@ export default function PayslipTab() {
     else setLineItems([{ ...EMPTY_LINE }])
     setEditingPayslip(p)
     setForm({
-      employee_id: p.employee_id,
+      employee_id: p.employee_id ?? '',
       period_month: p.period_month,
       period_year: p.period_year,
       base_salary: p.base_salary.toString(),
@@ -203,8 +230,8 @@ export default function PayslipTab() {
       period_month: Number(form.period_month),
       period_year: Number(form.period_year),
       base_salary: Number(form.base_salary) || 0,
-      ot_hours: Number(form.ot_hours) || 0,
-      ot_rate: Number(form.ot_rate) || 0,
+      ot_hours: otType === 'holiday' ? Number(holidayOtHours) || 0 : Number(form.ot_hours) || 0,
+      ot_rate: otType === 'holiday' ? holidayHourlyOtRate : Number(form.ot_rate) || 0,
       ot_amount: otAmount,
       incentive: Number(form.incentive) || 0,
       incentive_note: form.incentive_note,
@@ -308,27 +335,59 @@ export default function PayslipTab() {
 
       {showForm && (
         <form onSubmit={editingPayslip ? handleUpdate : handleSubmit} className="bg-white rounded-xl border border-gray-100 p-6 shadow-sm space-y-5">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between flex-wrap gap-2">
             <h3 className="font-semibold text-gray-800">{editingPayslip ? 'แก้ไขสลิป' : 'สร้างสลิปใหม่'}</h3>
-            {editingPayslip && <span className="text-xs text-indigo-600 bg-indigo-50 px-2 py-1 rounded">กำลังแก้ไข: {editingPayslip.employee?.name}</span>}
+            {editingPayslip
+              ? <span className="text-xs text-indigo-600 bg-indigo-50 px-2 py-1 rounded">กำลังแก้ไข: {editingPayslip.employee?.name ?? editingPayslip.guest_name}</span>
+              : (
+                <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
+                  <div
+                    onClick={() => { setGuestMode(!guestMode); setForm((f) => ({ ...f, employee_id: '' })) }}
+                    className={`relative w-10 h-5 rounded-full transition ${guestMode ? 'bg-indigo-600' : 'bg-gray-300'}`}
+                  >
+                    <span className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${guestMode ? 'translate-x-5' : ''}`} />
+                  </div>
+                  <span className="text-gray-600">สร้างครั้งเดียว (ไม่บันทึกในระบบ)</span>
+                </label>
+              )
+            }
           </div>
 
           <div className="grid grid-cols-3 gap-4">
             {!editingPayslip && (
-            <div className="col-span-3 md:col-span-1">
-              <label className="block text-sm font-medium text-gray-700 mb-1">พนักงาน *</label>
-              <select
-                required
-                value={form.employee_id}
-                onChange={(e) => setForm({ ...form, employee_id: e.target.value })}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-              >
-                <option value="">— เลือกพนักงาน —</option>
-                {employees.map((emp) => (
-                  <option key={emp.id} value={emp.id}>{emp.name} ({emp.type === 'freelance' ? 'Freelance' : 'ประจำ'})</option>
-                ))}
-              </select>
-            </div>
+              guestMode ? (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">ชื่อ *</label>
+                    <input required value={guestName} onChange={(e) => setGuestName(e.target.value)} placeholder="ชื่อ-นามสกุล"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">อีเมล *</label>
+                    <input required type="email" value={guestEmail} onChange={(e) => setGuestEmail(e.target.value)} placeholder="email@example.com"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">ประเภท</label>
+                    <select value={guestType} onChange={(e) => setGuestType(e.target.value as 'fulltime' | 'freelance')}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
+                      <option value="freelance">Freelance</option>
+                      <option value="fulltime">พนักงานประจำ</option>
+                    </select>
+                  </div>
+                </>
+              ) : (
+                <div className="col-span-3 md:col-span-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">พนักงาน *</label>
+                  <select required value={form.employee_id} onChange={(e) => setForm({ ...form, employee_id: e.target.value })}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
+                    <option value="">— เลือกพนักงาน —</option>
+                    {employees.map((emp) => (
+                      <option key={emp.id} value={emp.id}>{emp.name} ({emp.type === 'freelance' ? 'Freelance' : 'ประจำ'})</option>
+                    ))}
+                  </select>
+                </div>
+              )
             )}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">เดือน</label>
@@ -421,12 +480,97 @@ export default function PayslipTab() {
               </div>
             ) : (
               <div className="grid grid-cols-3 gap-4">
-                <FField label="เงินเดือน (บาท)" value={form.base_salary} onChange={(v) => setForm({ ...form, base_salary: v })} type="number" />
-                <FField label="OT (ชั่วโมง)" value={form.ot_hours} onChange={(v) => setForm({ ...form, ot_hours: v })} type="number" />
-                <FField label="อัตรา OT/ชม." value={form.ot_rate} onChange={(v) => setForm({ ...form, ot_rate: v })} type="number" />
-                {(Number(form.ot_hours) > 0 || Number(form.ot_rate) > 0) && (
-                  <div className="col-span-3 text-sm text-indigo-600">
-                    OT: {form.ot_hours} ชม. × {formatCurrency(Number(form.ot_rate))} = <strong>{formatCurrency(otAmount)}</strong>
+                <FField label="เงินเดือน (บาท)" value={form.base_salary} onChange={(v) => {
+                  // ถ้าเลือก OT วันหยุดตามประเพณี ให้คำนวณอัตราใหม่อัตโนมัติ
+                  const holidayRate = otType === 'holiday'
+                    ? String(Math.round((Number(v) / 30 / 8) * 3 * 100) / 100)
+                    : form.ot_rate
+                  setForm({ ...form, base_salary: v, ot_rate: holidayRate })
+                }} type="number" />
+
+                {/* OT Type */}
+                <div className="col-span-3">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">ประเภท OT</label>
+                  <div className="flex gap-3 flex-wrap">
+                    {[
+                      { val: 'normal', label: 'OT วันทำงานปกติ (×1.5)', desc: '' },
+                      { val: 'holiday', label: 'ทำงานในวันหยุดตามประเพณี', desc: '' },
+                    ].map((opt) => (
+                      <label key={opt.val} className={`flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer text-sm transition ${otType === opt.val ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}>
+                        <input type="radio" name="ot_type" value={opt.val} checked={otType === opt.val}
+                          onChange={() => setOtType(opt.val as 'normal' | 'holiday')}
+                          className="accent-indigo-600" />
+                        <span>{opt.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                {otType === 'normal' ? (
+                  <>
+                    <div className="col-span-3">
+                      {form.base_salary && Number(form.base_salary) > 0 && (
+                        <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 text-sm text-blue-800 mb-3 space-y-1">
+                          <p className="font-semibold">สูตร OT วันทำงานปกติ (กฎหมายแรงงาน ×1.5)</p>
+                          <p>อัตรา/ชม. = {formatCurrency(Number(form.base_salary))} ÷ 30 ÷ 8 × 1.5 = <strong>{formatCurrency(normalOtRate)}</strong>/ชม.</p>
+                        </div>
+                      )}
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">OT (ชั่วโมง)</label>
+                      <input type="number" value={form.ot_hours} onChange={(e) => setForm({ ...form, ot_hours: e.target.value })} placeholder="0"
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">อัตรา OT/ชม. (บาท)</label>
+                      <input type="number" value={form.ot_rate || (form.base_salary ? String(normalOtRate) : '')}
+                        onChange={(e) => setForm({ ...form, ot_rate: e.target.value })} placeholder={form.base_salary ? String(normalOtRate) : '0'}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-indigo-50" />
+                      {form.base_salary && <p className="text-xs text-indigo-500 mt-1">คำนวณอัตโนมัติจากเงินเดือน — แก้ได้ถ้าต้องการ</p>}
+                    </div>
+                    <div />
+                    {Number(form.ot_hours) > 0 && (
+                      <div className="col-span-3 text-sm text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg px-4 py-3">
+                        <strong>{form.ot_hours} ชม.</strong> × {formatCurrency(Number(form.ot_rate) || normalOtRate)} = <strong className="text-lg">{formatCurrency(otAmount)}</strong>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="col-span-3 space-y-3">
+                    {/* อธิบายสูตร */}
+                    {form.base_salary && (
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 text-sm text-blue-800 space-y-1">
+                        <p className="font-semibold">สูตรคำนวณ (เงินเดือน {formatCurrency(Number(form.base_salary))})</p>
+                        <p>• อัตราค่าจ้างต่อวัน = {formatCurrency(Number(form.base_salary))} ÷ 30 = <strong>{formatCurrency(dailyRate)}</strong>/วัน</p>
+                        <p>• OT เกิน 8 ชม. = {formatCurrency(dailyRate)} ÷ 8 × 3 = <strong>{formatCurrency(holidayHourlyOtRate)}</strong>/ชม.</p>
+                      </div>
+                    )}
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">จำนวนวันที่ทำงานในวันหยุด</label>
+                        <input type="number" value={holidayDays} onChange={(e) => setHolidayDays(e.target.value)} placeholder="0" min="0"
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+                        {holidayDays && form.base_salary && (
+                          <p className="text-xs text-gray-500 mt-1">{holidayDays} วัน × {formatCurrency(dailyRate)} = <span className="text-indigo-600 font-medium">{formatCurrency(Number(holidayDays) * dailyRate)}</span></p>
+                        )}
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">ชม. OT เกิน 8 ชม./วัน</label>
+                        <input type="number" value={holidayOtHours} onChange={(e) => setHolidayOtHours(e.target.value)} placeholder="0" min="0"
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+                        {holidayOtHours && form.base_salary && (
+                          <p className="text-xs text-gray-500 mt-1">{holidayOtHours} ชม. × {formatCurrency(holidayHourlyOtRate)} = <span className="text-indigo-600 font-medium">{formatCurrency(Number(holidayOtHours) * holidayHourlyOtRate)}</span></p>
+                        )}
+                      </div>
+                    </div>
+                    {(Number(holidayDays) > 0 || Number(holidayOtHours) > 0) && (
+                      <div className="bg-indigo-50 border border-indigo-200 rounded-lg px-4 py-3 text-sm text-indigo-800">
+                        <p className="font-semibold mb-1">สรุป OT วันหยุดตามประเพณี</p>
+                        {Number(holidayDays) > 0 && <p>ค่าทำงานวันหยุด: {holidayDays} วัน × {formatCurrency(dailyRate)} = {formatCurrency(Number(holidayDays) * dailyRate)} บาท</p>}
+                        {Number(holidayOtHours) > 0 && <p>OT เกิน 8 ชม.: {holidayOtHours} ชม. × {formatCurrency(holidayHourlyOtRate)} = {formatCurrency(Number(holidayOtHours) * holidayHourlyOtRate)} บาท</p>}
+                        <p className="font-bold border-t border-indigo-200 mt-1 pt-1">รวมทั้งหมด = <span className="text-lg">{formatCurrency(otAmount)}</span></p>
+                      </div>
+                    )}
                   </div>
                 )}
                 <FField
@@ -453,7 +597,59 @@ export default function PayslipTab() {
 
           <div className="border-t pt-4">
             <h4 className="text-sm font-semibold text-gray-600 mb-1">รายการหัก</h4>
-            <p className="text-xs text-gray-400 mb-3">คำนวณอัตโนมัติ — แก้ไขได้ถ้าจำเป็น</p>
+            <p className="text-xs text-gray-400 mb-1">คำนวณอัตโนมัติ — แก้ไขได้ถ้าจำเป็น</p>
+            {/* Tax calculator - พนักงานประจำ */}
+            {taxCalc && (
+              <div className={`rounded-lg border mb-3 overflow-hidden ${taxCalc.taxableIncome > 150000 ? 'border-amber-200' : 'border-green-200'}`}>
+                <div className={`px-4 py-2 flex items-center justify-between ${taxCalc.taxableIncome > 150000 ? 'bg-amber-50' : 'bg-green-50'}`}>
+                  <div className="text-sm font-semibold text-gray-700">
+                    {taxCalc.taxableIncome > 150000
+                      ? `⚠️ ต้องหักภาษีเงินได้ — ${formatCurrency(taxCalc.monthlyTax)}/เดือน`
+                      : `✅ ยังไม่ถึงเกณฑ์เสียภาษี (เงินได้สุทธิ ${formatCurrency(taxCalc.taxableIncome)})`}
+                  </div>
+                  {taxCalc.taxableIncome > 150000 && (
+                    <button type="button"
+                      onClick={() => setForm(prev => ({ ...prev, withholding_tax: String(taxCalc.monthlyTax) }))}
+                      className="text-xs bg-amber-600 text-white px-3 py-1 rounded-lg hover:bg-amber-700 font-medium">
+                      ใส่ค่านี้อัตโนมัติ
+                    </button>
+                  )}
+                </div>
+                <div className="px-4 py-3 bg-white text-xs text-gray-600 space-y-1">
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                    <span className="text-gray-500">รายได้ต่อปี (ประมาณ)</span>
+                    <span className="text-right font-medium">{formatCurrency(taxCalc.annualIncome)}</span>
+                    <span className="text-gray-500">− ค่าใช้จ่าย 50% (สูงสุด 100,000)</span>
+                    <span className="text-right text-red-500">− {formatCurrency(taxCalc.expenseDeduction)}</span>
+                    <span className="text-gray-500">− ลดหย่อนส่วนตัว</span>
+                    <span className="text-right text-red-500">− {formatCurrency(taxCalc.personalAllowance)}</span>
+                    <span className="text-gray-500">− ประกันสังคม (ทั้งปี)</span>
+                    <span className="text-right text-red-500">− {formatCurrency(taxCalc.socialSecurityDeduction)}</span>
+                    <span className="font-semibold text-gray-700 border-t pt-1">เงินได้สุทธิ</span>
+                    <span className={`text-right font-bold border-t pt-1 ${taxCalc.taxableIncome > 150000 ? 'text-amber-700' : 'text-green-700'}`}>
+                      {formatCurrency(taxCalc.taxableIncome)}
+                    </span>
+                    {taxCalc.annualTax > 0 && <>
+                      <span className="text-gray-500">ภาษีต่อปี</span>
+                      <span className="text-right font-medium text-amber-700">{formatCurrency(taxCalc.annualTax)}</span>
+                      <span className="font-semibold text-gray-700">หักต่อเดือน</span>
+                      <span className="text-right font-bold text-amber-700">{formatCurrency(taxCalc.monthlyTax)}</span>
+                    </>}
+                  </div>
+                  {taxCalc.annualTax > 0 && (
+                    <div className="mt-2 pt-2 border-t border-gray-100">
+                      <p className="text-gray-400 mb-1">bracket ที่เสียภาษี:</p>
+                      {taxCalc.brackets.filter(b => b.tax > 0).map((b, i) => (
+                        <div key={i} className="flex justify-between">
+                          <span>{formatCurrency(b.from)} – {b.to ? formatCurrency(b.to) : '∞'} ({Math.round(b.rate*100)}%)</span>
+                          <span className="font-medium">{formatCurrency(b.tax)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
             <div className="grid grid-cols-3 gap-4">
               <FField label={`ประกันสังคม${!isFreelance ? ' (875 บาท)' : ''}`} value={form.social_security} onChange={(v) => setForm({ ...form, social_security: v })} type="number" />
               <FField label={`ภาษีหัก ณ ที่จ่าย${isFreelance ? ' (3% ค่าจ้าง)' : ' (3% Incentive)'}`} value={form.withholding_tax} onChange={(v) => setForm({ ...form, withholding_tax: v })} type="number" />

@@ -18,14 +18,14 @@ export default function OverviewTab() {
       .then((d) => { setPayslips(Array.isArray(d) ? d : []); setLoading(false) })
   }, [month, year])
 
-  const acknowledged = payslips.filter((p) => p.status === 'acknowledged').length
-  const pending = payslips.filter((p) => p.status === 'pending').length
+  const paid = payslips.filter((p) => p.transfer_date).length
+  const pending = payslips.filter((p) => !p.transfer_date).length
   const totalNet = payslips.reduce((s, p) => s + p.net_pay, 0)
 
   const stats = [
     { label: 'สลิปทั้งหมดเดือนนี้', value: payslips.length, icon: Users, color: 'text-indigo-600', bg: 'bg-indigo-50' },
-    { label: 'รับทราบแล้ว', value: acknowledged, icon: CheckCircle, color: 'text-green-600', bg: 'bg-green-50' },
-    { label: 'รอยืนยัน', value: pending, icon: Clock, color: 'text-amber-600', bg: 'bg-amber-50' },
+    { label: 'จ่ายแล้ว', value: paid, icon: CheckCircle, color: 'text-green-600', bg: 'bg-green-50' },
+    { label: 'รอจ่าย', value: pending, icon: Clock, color: 'text-amber-600', bg: 'bg-amber-50' },
     { label: 'ยอดจ่ายรวมเดือนนี้', value: formatCurrency(totalNet), icon: DollarSign, color: 'text-blue-600', bg: 'bg-blue-50' },
   ]
 
@@ -85,13 +85,13 @@ export default function OverviewTab() {
                     {formatCurrency(p.net_pay)}
                   </td>
                   <td className="px-4 py-3 text-center">
-                    {p.status === 'acknowledged' ? (
+                    {p.transfer_date ? (
                       <span className="inline-flex items-center gap-1 text-green-600 text-xs font-medium">
-                        <CheckCircle size={14} /> รับทราบแล้ว
+                        <CheckCircle size={14} /> จ่ายแล้ว
                       </span>
                     ) : (
                       <span className="inline-flex items-center gap-1 text-amber-600 text-xs font-medium">
-                        <Clock size={14} /> รอยืนยัน
+                        <Clock size={14} /> รอจ่าย
                       </span>
                     )}
                   </td>

@@ -1,26 +1,32 @@
 'use client'
 import { useState } from 'react'
-import { supabase } from '@/lib/supabase'
+import { useRouter } from 'next/navigation'
+import { Eye, EyeOff } from 'lucide-react'
 
 export default function LoginPage() {
-  const [email, setEmail] = useState('')
-  const [sent, setSent] = useState(false)
-  const [loading, setLoading] = useState(false)
+  const router = useRouter()
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
     setError('')
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: { emailRedirectTo: `${window.location.origin}/api/auth/callback` },
+
+    const res = await fetch('/api/auth/admin-login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
     })
+
     setLoading(false)
-    if (error) {
-      setError('เกิดข้อผิดพลาด กรุณาลองใหม่')
+    if (res.ok) {
+      router.push('/admin')
     } else {
-      setSent(true)
+      setError('Username หรือ Password ไม่ถูกต้อง')
     }
   }
 
@@ -29,49 +35,53 @@ export default function LoginPage() {
       <div className="bg-white rounded-2xl shadow-xl p-8 w-full max-w-sm">
         <div className="text-center mb-6">
           <div className="text-4xl mb-2">🔒</div>
-          <h1 className="text-2xl font-bold text-gray-900">เข้าสู่ระบบ</h1>
-          <p className="text-gray-500 text-sm mt-1">ดูสลิปเงินเดือนของคุณ</p>
+          <h1 className="text-2xl font-bold text-gray-900">Admin Login</h1>
+          <p className="text-gray-500 text-sm mt-1">ระบบจัดการสลิปเงินเดือน Peepz</p>
         </div>
 
-        {!sent ? (
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                อีเมลพนักงาน
-              </label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="your@email.com"
-                required
-                className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-              />
-            </div>
-            {error && <p className="text-red-500 text-sm">{error}</p>}
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-indigo-600 text-white py-3 rounded-xl font-semibold hover:bg-indigo-700 disabled:opacity-60 transition"
-            >
-              {loading ? 'กำลังส่ง...' : 'ส่ง Magic Link ไปยังอีเมล'}
-            </button>
-          </form>
-        ) : (
-          <div className="text-center space-y-3">
-            <div className="text-5xl">📧</div>
-            <p className="font-semibold text-gray-800">ส่ง Link แล้ว!</p>
-            <p className="text-sm text-gray-500">
-              กรุณาเช็คอีเมล <strong>{email}</strong> แล้วคลิก link เพื่อเข้าสู่ระบบ
-            </p>
-            <button
-              onClick={() => setSent(false)}
-              className="text-indigo-600 text-sm underline mt-2"
-            >
-              ส่งใหม่
-            </button>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Username</label>
+            <input
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="Username"
+              required
+              autoComplete="username"
+              className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            />
           </div>
-        )}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+            <div className="relative">
+              <input
+                type={showPassword ? 'text' : 'password'}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Password"
+                required
+                autoComplete="current-password"
+                className="w-full border border-gray-300 rounded-xl px-4 py-3 pr-11 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              >
+                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
+          </div>
+          {error && <p className="text-red-500 text-sm">{error}</p>}
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full bg-indigo-600 text-white py-3 rounded-xl font-semibold hover:bg-indigo-700 disabled:opacity-60 transition"
+          >
+            {loading ? 'กำลังเข้าสู่ระบบ...' : 'เข้าสู่ระบบ'}
+          </button>
+        </form>
       </div>
     </main>
   )

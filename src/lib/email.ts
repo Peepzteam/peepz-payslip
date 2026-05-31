@@ -15,9 +15,12 @@ function createTransporter() {
 }
 
 function buildPayslipEmailHtml(payslip: Payslip): string {
-  const emp = payslip.employee!
+  const emp = payslip.employee
+  const guestName = payslip.guest_name ?? ''
+  const guestType = payslip.guest_type ?? 'freelance'
   const period = formatPeriod(payslip.period_month, payslip.period_year)
-  const isFreelance = emp.type === 'freelance'
+  const isFreelance = emp ? emp.type === 'freelance' : guestType === 'freelance'
+  const displayName = emp?.name ?? guestName
 
   const incomeRows = isFreelance
     ? (payslip.line_items?.length
@@ -47,10 +50,10 @@ function buildPayslipEmailHtml(payslip: Payslip): string {
         </div>
         <div style="padding:24px 32px;">
           <table style="width:100%; border-collapse:collapse; margin-bottom:20px">
-            <tr><td style="color:#666">ชื่อ</td><td><strong>${emp.name}</strong></td></tr>
-            ${emp.employee_code ? `<tr><td style="color:#666">รหัสพนักงาน</td><td>${emp.employee_code}</td></tr>` : ''}
+            <tr><td style="color:#666">ชื่อ</td><td><strong>${displayName}</strong></td></tr>
+            ${emp?.employee_code ? `<tr><td style="color:#666">รหัสพนักงาน</td><td>${emp.employee_code}</td></tr>` : ''}
             <tr><td style="color:#666">ประเภท</td><td>${isFreelance ? 'Freelance' : 'พนักงานประจำ'}</td></tr>
-            ${emp.department ? `<tr><td style="color:#666">แผนก</td><td>${emp.department}</td></tr>` : ''}
+            ${emp?.department ? `<tr><td style="color:#666">แผนก</td><td>${emp.department}</td></tr>` : ''}
           </table>
 
           <h3 style="color:#4f46e5; border-bottom:2px solid #e0e7ff; padding-bottom:8px">รายได้</h3>
@@ -96,15 +99,18 @@ function buildPayslipEmailHtml(payslip: Payslip): string {
 }
 
 export async function sendPayslipEmail(payslip: Payslip) {
-  const emp = payslip.employee!
+  const toEmail = payslip.employee?.email ?? payslip.guest_email
+  const toName = payslip.employee?.name ?? payslip.guest_name
+  if (!toEmail) throw new Error('No recipient email')
+
   const period = formatPeriod(payslip.period_month, payslip.period_year)
   const transporter = createTransporter()
 
   const result = await transporter.sendMail({
     from: `"Payslip System" <${process.env.BREVO_SENDER_EMAIL}>`,
-    to: emp.email,
+    to: toEmail,
     cc: process.env.ADMIN_EMAIL!,
-    subject: `สลิปเงินเดือน ${period} — ${emp.name}`,
+    subject: `สลิปเงินเดือน ${period} — ${toName}`,
     html: buildPayslipEmailHtml(payslip),
   })
 
@@ -112,7 +118,9 @@ export async function sendPayslipEmail(payslip: Payslip) {
 }
 
 export async function sendTransferConfirmationEmail(payslip: Payslip) {
-  const emp = payslip.employee!
+  const toEmail = payslip.employee?.email ?? payslip.guest_email
+  const toName = payslip.employee?.name ?? payslip.guest_name ?? ''
+  if (!toEmail) throw new Error('No recipient email')
   const period = formatPeriod(payslip.period_month, payslip.period_year)
   const transporter = createTransporter()
   const dateStr = payslip.transfer_date
@@ -121,9 +129,9 @@ export async function sendTransferConfirmationEmail(payslip: Payslip) {
 
   await transporter.sendMail({
     from: `"Payslip System" <${process.env.BREVO_SENDER_EMAIL}>`,
-    to: emp.email,
+    to: toEmail,
     cc: process.env.ADMIN_EMAIL!,
-    subject: `✅ ยืนยันการโอนเงิน ${period} — ${emp.name}`,
+    subject: `✅ ยืนยันการโอนเงิน ${period} — ${toName}`,
     html: `
       <!DOCTYPE html>
       <html>
@@ -135,7 +143,7 @@ export async function sendTransferConfirmationEmail(payslip: Payslip) {
             <p style="margin:8px 0 0; opacity:0.85">${period}</p>
           </div>
           <div style="padding:32px; text-align:center">
-            <p style="color:#666; margin:0 0 8px">เรียน คุณ${emp.name}</p>
+            <p style="color:#666; margin:0 0 8px">เรียน คุณ${toName}</p>
             <p style="color:#374151; margin:0 0 24px">บริษัทได้ทำการโอนเงินเดือนให้แล้ว</p>
             <div style="background:#f0fdf4; border:2px solid #86efac; border-radius:12px; padding:20px; margin:0 0 24px">
               <div style="color:#666; font-size:14px; margin-bottom:4px">ยอดที่ได้รับ</div>

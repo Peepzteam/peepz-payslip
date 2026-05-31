@@ -48,14 +48,11 @@ export async function POST(req: NextRequest) {
 
   if (sendEmail) {
     try {
-      console.log('[email] sending to', (data as Payslip).employee?.email)
       const emailResult = await sendPayslipEmail(data as Payslip)
       console.log('[email] sent OK', emailResult)
     } catch (e) {
       console.error('[email] FAILED:', e)
     }
-  } else {
-    console.log('[email] skipped (send_email=false)')
   }
 
   return NextResponse.json(data, { status: 201 })

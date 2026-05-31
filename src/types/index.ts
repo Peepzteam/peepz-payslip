@@ -10,7 +10,25 @@ export interface Employee {
   department: string | null
   position: string | null
   base_salary: number | null
+  start_date: string | null
   is_active: boolean
+  created_at: string
+}
+
+export interface SalaryHistory {
+  id: string
+  employee_id: string
+  effective_date: string
+  salary: number
+  note: string | null
+  created_at: string
+}
+
+export interface CompanyHoliday {
+  id: string
+  date: string
+  name: string
+  year: number
   created_at: string
 }
 
@@ -24,7 +42,10 @@ export interface LineItem {
 
 export interface Payslip {
   id: string
-  employee_id: string
+  employee_id: string | null
+  guest_name: string | null
+  guest_email: string | null
+  guest_type: string | null
   period_month: number
   period_year: number
   base_salary: number
