@@ -283,22 +283,50 @@ export default function FinanceTab() {
   })
 
   function exportCSV() {
-    const rows: string[][] = [['#', 'วันที่', 'รายการ / ลูกค้า', 'หมวด', 'ยอดรับ', 'ยอดจ่าย', 'คงเหลือ']]
+    const fmt = (n: number) => n === 0 ? '' : String(n)
+    const rows: string[][] = [
+      ['#', 'วันที่', 'รายการ / ลูกค้า', 'หมวด', 'รายละเอียด', 'ยอดรับ', 'ยอดจ่าย', 'คงเหลือ']
+    ]
     ledgerWithBalance.forEach((row, idx) => {
       if (row.kind === 'payroll') {
         const p = row.rec as PayslipRecord
-        rows.push([String(idx+1), p.transfer_date ?? '', p.employee?.name ?? p.guest_name ?? '—',
-          isPayslipFreelance(p) ? 'Freelance (สลิป)' : 'พนักงานประจำ (สลิป)',
-          '', String(p.net_pay), String(row.balance)])
+        const name = payslipName(p)
+        const isFl = isPayslipFreelance(p)
+        const cat = isFl ? 'Freelance (สลิป)' : 'พนักงานประจำ (สลิป)'
+        const date = p.transfer_date ?? ''
+
+        // แถวหลัก — สรุปยอดสุทธิ
+        const grossIncome = Number(p.base_salary||0) + Number(p.ot_amount||0) + Number(p.incentive||0) + Number(p.other_income||0)
+        const totalDeduct = Number(p.social_security||0) + Number(p.withholding_tax||0)
+        const breakdown = [
+          Number(p.base_salary)   > 0 ? `เงินเดือน ${p.base_salary}` : '',
+          Number(p.ot_amount)     > 0 ? `OT ${p.ot_amount}` : '',
+          Number(p.incentive)     > 0 ? `Incentive ${p.incentive}` : '',
+          Number(p.other_income)  > 0 ? `รายได้อื่นๆ ${p.other_income}` : '',
+          grossIncome > 0         ? `รวมรับ ${grossIncome}` : '',
+          Number(p.social_security)  > 0 ? `หัก ปกส. ${p.social_security}` : '',
+          Number(p.withholding_tax)  > 0 ? `หัก ภาษี 3% ${p.withholding_tax}` : '',
+          totalDeduct > 0         ? `รวมหัก ${totalDeduct}` : '',
+          `สุทธิ ${p.net_pay}`,
+        ].filter(Boolean).join(' | ')
+
+        rows.push([String(idx+1), date, name, cat, breakdown, '', fmt(Number(p.net_pay)), fmt(Number(row.balance))])
+
       } else if (row.kind === 'income') {
         const r = row.rec as IncomeRecord
+        const sourcesLabel = r.sources?.length
+          ? r.sources.map(s => INCOME_SOURCES.find(x => x.val === s)?.label.replace(/^[^\s]+\s/,'') ?? s).join(', ')
+          : ''
+        const detail = [sourcesLabel, r.note].filter(Boolean).join(' | ')
         rows.push([String(idx+1), r.transaction_date ?? '',
-          [r.client_name, r.description].filter(Boolean).join(' - '), 'รายรับ',
-          String(r.amount), '', String(row.balance)])
+          [r.client_name, r.description].filter(Boolean).join(' - '),
+          'รายรับ', detail, fmt(Number(r.amount)), '', fmt(Number(row.balance))])
+
       } else {
         const r = row.rec as ExpenseRecord
+        const detail = r.note ?? ''
         rows.push([String(idx+1), r.transaction_date ?? '', r.description ?? '',
-          catMeta(r.category).label, '', String(r.amount), String(row.balance)])
+          catMeta(r.category).label, detail, '', fmt(Number(r.amount)), fmt(Number(row.balance))])
       }
     })
     const csv = '﻿' + rows.map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n')

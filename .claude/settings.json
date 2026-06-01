@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.command' | grep -q 'git push' && echo '{\"systemMessage\": \"Deploy ขึ้น Netlify ด้วยเลยมั้ยคะ? 🚀\"}' || true"
+          }
+        ]
+      }
+    ]
+  }
+}
