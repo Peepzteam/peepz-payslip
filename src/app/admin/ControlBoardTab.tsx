@@ -391,7 +391,6 @@ export default function ControlBoardTab() {
 
   // KBIZ — kbiz_income auto-synced from Finance income_records
   const kbizIncArr   = m12.map((_,i) => financeIncome(i+1) || entryVal('kbiz_income', i+1))
-  const kbizCarryArr = entryRow('kbiz_carry')
   // For synced expense cats: use Finance data; for others: use control_entries
   function resolveExpVal(cat: string, m: number) {
     const fromFinance = financeExp(cat, m)
@@ -411,7 +410,15 @@ export default function ControlBoardTab() {
       .reduce((s, r) => s + r.amount, 0)
   }
   const totalExpArr = m12.map((_,i) => staffTotArr[i] + financeExpTotal(i+1))
-  const kbizBalArr  = m12.map((_,i)=>kbizCarryArr[i]+kbizIncArr[i]-totalExpArr[i])
+
+  // ยอดยกมา: เดือน 1 = กรอกเอง, เดือน 2+ = คงเหลือเดือนก่อนหน้า (auto)
+  const kbizBalArr: number[] = []
+  const kbizCarryArr: number[] = []
+  for (let i = 0; i < 12; i++) {
+    const carry = i === 0 ? entryVal('kbiz_carry', 1) : kbizBalArr[i - 1]
+    kbizCarryArr.push(carry)
+    kbizBalArr.push(carry + kbizIncArr[i] - totalExpArr[i])
+  }
 
   // Service breakdown — จาก income_records (Finance tab) ตาม sources
   const serviceRows = SERVICE_TYPES.map(st => ({
@@ -744,10 +751,15 @@ export default function ControlBoardTab() {
                     <RowLabel label={MANUAL_CATS[cat]} synced={cat==='kbiz_income'}/>
                     {cat==='kbiz_income'
                       ? m12.map((_,i)=><Cell key={i+1} m={i+1} value={kbizIncArr[i]} readOnly color={color}/>)
-                      : m12.map((_,i)=><Cell key={i+1} cat={cat} m={i+1} value={entryVal(cat,i+1)} color={color}/>)
+                      : cat==='kbiz_carry'
+                        ? m12.map((_,i)=> i===0
+                            ? <Cell key={1} cat="kbiz_carry" m={1} value={kbizCarryArr[0]} color={color}/>
+                            : <Cell key={i+1} m={i+1} value={kbizCarryArr[i]} readOnly color="text-gray-400"/>
+                          )
+                        : m12.map((_,i)=><Cell key={i+1} cat={cat} m={i+1} value={entryVal(cat,i+1)} color={color}/>)
                     }
                     <td className="px-2 py-1.5 text-right text-xs font-bold bg-gray-50 whitespace-nowrap">
-                      {cat==='kbiz_income' ? formatCurrency(sum(kbizIncArr)) : formatCurrency(sum(entryRow(cat)))}
+                      {cat==='kbiz_income' ? formatCurrency(sum(kbizIncArr)) : formatCurrency(sum(kbizCarryArr))}
                     </td>
                   </tr>
                 ))}
