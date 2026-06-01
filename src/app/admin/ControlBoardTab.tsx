@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState, useCallback } from 'react'
+import React, { useEffect, useState, useCallback } from 'react'
 import { formatCurrency } from '@/lib/utils'
 import { Plus, X, ChevronDown, ChevronUp, Pencil, Trash2, Check } from 'lucide-react'
 import ControlBoardAnalytics from './ControlBoardAnalytics'
@@ -73,7 +73,7 @@ export default function ControlBoardTab() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [entries, setEntries] = useState<ControlEntry[]>([])
   const [payslips, setPayslips] = useState<PayslipRow[]>([])
-  const [incomeRecs, setIncomeRecs] = useState<{month:number;amount:number}[]>([])
+  const [incomeRecs, setIncomeRecs] = useState<{month:number;amount:number;sources:string[]}[]>([])
   const [expenseRecs, setExpenseRecs] = useState<{month:number;category:string;amount:number}[]>([])
 
   // Campaign form
@@ -114,7 +114,7 @@ export default function ControlBoardTab() {
       setCampaigns(Array.isArray(c) ? c : [])
       setEntries(Array.isArray(e) ? e : [])
       setPayslips(Array.isArray(p) ? p : [])
-      setIncomeRecs(Array.isArray(inc) ? inc.map((r: {month:number;amount:number}) => ({month:r.month, amount:r.amount})) : [])
+      setIncomeRecs(Array.isArray(inc) ? inc.map((r: {month:number;amount:number;sources:string[]}) => ({month:r.month, amount:r.amount, sources: Array.isArray(r.sources) ? r.sources : []})) : [])
       setExpenseRecs(Array.isArray(exp) ? exp.map((r: {month:number;category:string;amount:number}) => ({month:r.month, category:r.category, amount:r.amount})) : [])
     } catch (err) { console.error(err) } finally { setLoading(false) }
   }, [year])
@@ -148,6 +148,14 @@ export default function ControlBoardTab() {
   // ─── Finance records aggregations ───
   function financeIncome(m: number) {
     return incomeRecs.filter(r => r.month === m).reduce((s,r) => s+r.amount, 0)
+  }
+  // นับจำนวน income records ที่มี source ประเภทนั้น
+  function serviceCount(type: string, m: number) {
+    return incomeRecs.filter(r => r.month === m && r.sources.includes(type)).length
+  }
+  // รายได้จาก income records ที่มี source ประเภทนั้น
+  function serviceRevenue(type: string, m: number) {
+    return incomeRecs.filter(r => r.month === m && r.sources.includes(type)).reduce((s,r) => s+r.amount, 0)
   }
   function financeExp(cat: string, m: number) {
     // map control-board category keys → Finance expense_records categories
@@ -405,10 +413,11 @@ export default function ControlBoardTab() {
   const totalExpArr = m12.map((_,i) => staffTotArr[i] + financeExpTotal(i+1))
   const kbizBalArr  = m12.map((_,i)=>kbizCarryArr[i]+kbizIncArr[i]-totalExpArr[i])
 
-  // Service breakdown (from campaigns)
+  // Service breakdown — จาก income_records (Finance tab) ตาม sources
   const serviceRows = SERVICE_TYPES.map(st => ({
     ...st,
-    arr: m12.map(m => campaigns.filter(c=>c.month===m&&c.service_type===st.val).reduce((s,c)=>s+c.revenue,0))
+    countArr:   m12.map((_,i) => serviceCount(st.val, i+1)),
+    revenueArr: m12.map((_,i) => serviceRevenue(st.val, i+1)),
   }))
 
   const sum = (arr: number[]) => arr.reduce((s,v)=>s+v,0)
@@ -864,14 +873,31 @@ export default function ControlBoardTab() {
               })}
 
               {/* ═══ SECTION: Services Sold ══════════════════════════════════ */}
-              <SectionHeader id="services" label="🛒 Services ที่ขายออก (ยอดขายแยกตามประเภท)" color="bg-violet-50 text-violet-800"/>
-              {!collapsed['services'] && serviceRows.map(s=>(
-                <tr key={s.val} className="hover:bg-gray-50/50">
-                  <RowLabel label={s.label} indent={1} sub/>
-                  {m12.map((_,i)=><Cell key={i+1} m={i+1} value={s.arr[i]} readOnly color="text-violet-600"/>)}
-                  <td className="px-2 py-1.5 text-right text-xs font-bold text-violet-600 bg-gray-50 whitespace-nowrap">{formatCurrency(sum(s.arr))}</td>
-                </tr>
-              ))}
+              <SectionHeader id="services" label="🛒 Services ที่ขายออก (จาก Finance tab)" color="bg-violet-50 text-violet-800"/>
+              {!collapsed['services'] && serviceRows.map(s=>{
+                const hasData = sum(s.countArr) > 0
+                if (!hasData) return null
+                return (
+                  <React.Fragment key={s.val}>
+                    {/* แถวจำนวน */}
+                    <tr className="hover:bg-gray-50/50">
+                      <RowLabel label={`${s.label} — จำนวนงาน`} indent={1} sub/>
+                      {m12.map((_,i)=>(
+                        <td key={i+1} className="px-2 py-1.5 text-center text-xs text-violet-600 font-medium" style={{minWidth:80}}>
+                          {s.countArr[i] > 0 ? s.countArr[i] : <span className="text-gray-200">—</span>}
+                        </td>
+                      ))}
+                      <td className="px-2 py-1.5 text-center text-xs font-bold text-violet-700 bg-gray-50">{sum(s.countArr)} งาน</td>
+                    </tr>
+                    {/* แถวรายได้ */}
+                    <tr className="hover:bg-gray-50/50">
+                      <RowLabel label={`${s.label} — รายได้`} indent={1} sub/>
+                      {m12.map((_,i)=><Cell key={i+1} m={i+1} value={s.revenueArr[i]} readOnly color="text-violet-600"/>)}
+                      <td className="px-2 py-1.5 text-right text-xs font-bold text-violet-600 bg-gray-50 whitespace-nowrap">{formatCurrency(sum(s.revenueArr))}</td>
+                    </tr>
+                  </React.Fragment>
+                )
+              })}
 
             </tbody>
           </table>

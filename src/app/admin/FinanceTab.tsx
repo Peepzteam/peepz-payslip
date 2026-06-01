@@ -47,13 +47,15 @@ function payslipName(p: PayslipRecord): string {
   return p.employee?.name ?? p.guest_name ?? '—'
 }
 
+// ตรงกับ SERVICE_TYPES ใน Control Board ทุกอย่าง
 const INCOME_SOURCES = [
-  { val: 'live',    label: '📺 Live',     color: 'bg-orange-100 text-orange-700 border-orange-200' },
-  { val: 'event',   label: '🎪 Event',    color: 'bg-pink-100 text-pink-700 border-pink-200' },
-  { val: 'content', label: '📝 Content',  color: 'bg-blue-100 text-blue-700 border-blue-200' },
-  { val: 'ads',     label: '📢 Ads',      color: 'bg-yellow-100 text-yellow-700 border-yellow-200' },
-  { val: 'review',  label: '⭐ Review',   color: 'bg-purple-100 text-purple-700 border-purple-200' },
-  { val: 'other',   label: '🔧 อื่นๆ',   color: 'bg-gray-100 text-gray-600 border-gray-200' },
+  { val: 'live',       label: '📺 Live Commerce',       color: 'bg-orange-100 text-orange-700 border-orange-200' },
+  { val: 'influencer', label: '🌟 Influencer Review',    color: 'bg-purple-100 text-purple-700 border-purple-200' },
+  { val: 'content',    label: '📝 Content Production',  color: 'bg-blue-100 text-blue-700 border-blue-200' },
+  { val: 'ads',        label: '📢 Ads',                 color: 'bg-yellow-100 text-yellow-700 border-yellow-200' },
+  { val: 'seeding',    label: '🌱 Seeding Marketing',    color: 'bg-green-100 text-green-700 border-green-200' },
+  { val: 'event',      label: '🎪 Event',               color: 'bg-pink-100 text-pink-700 border-pink-200' },
+  { val: 'other',      label: '🔧 อื่นๆ',              color: 'bg-gray-100 text-gray-600 border-gray-200' },
 ]
 
 const EXPENSE_CATEGORIES = [

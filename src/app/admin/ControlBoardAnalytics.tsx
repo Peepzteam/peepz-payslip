@@ -16,7 +16,7 @@ interface Props {
   kbizBalArr: number[]
   newRevArr: number[]
   exRevArr: number[]
-  serviceRows: { val: string; label: string; arr: number[] }[]
+  serviceRows: { val: string; label: string; revenueArr: number[]; countArr: number[] }[]
   newCamps: unknown[][]
   exCamps: unknown[][]
 }
@@ -55,7 +55,7 @@ function buildInsights(p: Props) {
   const newRatio    = pct(totalNewRev, totalRev)
 
   // Top service
-  const topService = [...serviceRows].sort((a, b) => sum(b.arr) - sum(a.arr))[0]
+  const topService = [...serviceRows].sort((a, b) => sum(b.revenueArr) - sum(a.revenueArr))[0]
 
   // Negative cash flow months
   const negativeCashMonths = kbizBalArr.filter(v => v < 0).length
@@ -84,7 +84,7 @@ function buildInsights(p: Props) {
   if (newRatio >= 40) strengths.push(`🆕 ลูกค้าใหม่ ${newRatio}% ของยอดขาย — ฐานลูกค้ากำลังขยาย`)
   if (totalExRev > totalNewRev) strengths.push(`🔄 ลูกค้าเก่า loyal — repeat business สูง (${pct(totalExRev, totalRev)}% ของรายได้)`)
 
-  if (topService && sum(topService.arr) > 0) strengths.push(`⭐ ${topService.label} เป็น service หลัก — คิดเป็น ${pct(sum(topService.arr), totalRev)}% ของยอดขายทั้งหมด`)
+  if (topService && sum(topService.revenueArr) > 0) strengths.push(`⭐ ${topService.label} เป็น service หลัก — คิดเป็น ${pct(sum(topService.revenueArr), totalRev)}% ของยอดขายทั้งหมด`)
 
   if (growthH !== null && growthH > 10) strengths.push(`📊 ครึ่งปีหลังเติบโต +${growthH}% เทียบครึ่งปีแรก`)
 
@@ -96,9 +96,9 @@ function buildInsights(p: Props) {
   if (profitMargin < 15 && profitMargin > 0) focus.push(`💹 พัฒนา Profit margin ปัจจุบัน ${profitMargin}% — ทบทวนต้นทุนต่องาน หรือขึ้นราคา`)
   if (avgRevenuePerCamp > 0) focus.push(`📋 Average revenue ต่อแคมเปญ ${fmt(avgRevenuePerCamp)} — หาทางเพิ่ม deal size หรือ upsell`)
 
-  const secondService = [...serviceRows].filter(s => sum(s.arr) > 0).sort((a, b) => sum(b.arr) - sum(a.arr))[1]
-  if (secondService && sum(secondService.arr) > 0) {
-    const gap = pct(sum(topService?.arr ?? []) - sum(secondService.arr), sum(topService?.arr ?? [1]))
+  const secondService = [...serviceRows].filter(s => sum(s.revenueArr) > 0).sort((a, b) => sum(b.revenueArr) - sum(a.revenueArr))[1]
+  if (secondService && sum(secondService.revenueArr) > 0) {
+    const gap = pct(sum(topService?.revenueArr ?? []) - sum(secondService.revenueArr), sum(topService?.revenueArr ?? [1]))
     if (gap > 40) focus.push(`🌱 ขยาย ${secondService.label} — ยังห่างจาก service หลักมาก มีโอกาสเติบโต`)
   }
 
@@ -170,7 +170,7 @@ export default function ControlBoardAnalytics(props: Props) {
   }))
 
   const servicePieData = serviceRows
-    .map(s => ({ name: s.label.replace(/^[^\s]+\s/, ''), value: sum(s.arr) }))
+    .map(s => ({ name: s.label.replace(/^[^\s]+\s/, ''), value: sum(s.revenueArr) }))
     .filter(s => s.value > 0)
     .sort((a, b) => b.value - a.value)
 
