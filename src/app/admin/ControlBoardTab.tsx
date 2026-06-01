@@ -169,8 +169,9 @@ export default function ControlBoardTab() {
       // Marketing
       mkt_ads:         'ads',
       mkt_ops:         'marketing_ops',
-      // Tax
+      // Tax & Petty Cash
       tax_vat_wht:     'tax',
+      petty_cash:      'petty_cash',
     }
     const finCat = catMap[cat]
     if (!finCat) return null // null = no Finance source → stays manual
@@ -180,7 +181,7 @@ export default function ControlBoardTab() {
   const FINANCE_SYNCED = new Set([
     'office_rent','office_utils','office_software','office_domain','office_equip',
     'team_food','team_outing','team_party','team_snack','team_birthday','team_welcome','team_activity',
-    'mkt_ads','mkt_ops','tax_vat_wht',
+    'mkt_ads','mkt_ops','tax_vat_wht','petty_cash',
   ])
 
   // ─── Campaign aggregations ───
@@ -393,25 +394,16 @@ export default function ControlBoardTab() {
                    'mkt_ads','mkt_ops','office_rent','office_utils','office_software','office_domain','office_equip',
                    'tax_vat_wht','petty_cash']
 
-  // รายจ่ายทั้งหมด = staff (จาก payslips) + ผลรวม Finance expense_records ทั้งหมด (ยกเว้น salary/freelance ซึ่งอยู่ใน payslips แล้ว)
-  // + petty_cash จาก control_entries (ถ้ายังไม่ได้บันทึกใน Finance)
-  const PAYROLL_CATS = new Set(['salary', 'freelance']) // อยู่ใน staffTotArr แล้ว
+  // รายจ่ายทั้งหมด = staff (จาก payslips) + Finance expense_records ทั้งหมด
+  // ยกเว้น salary/freelance ที่อยู่ใน payslips แล้ว → ไม่ double count
+  const PAYROLL_CATS = new Set(['salary', 'freelance'])
   function financeExpTotal(m: number) {
     return expenseRecs
       .filter(r => r.month === m && !PAYROLL_CATS.has(r.category))
       .reduce((s, r) => s + r.amount, 0)
   }
-  const manualExpArr = m12.map((_,i) => expCats.reduce((s,cat)=>s+resolveExpVal(cat,i+1),0))
-  const totalExpArr  = m12.map((_,i) => {
-    const finTotal = financeExpTotal(i+1)
-    // ถ้ามีข้อมูลจาก Finance ให้ใช้ Finance total + petty_cash manual (ที่ยังไม่ได้บันทึกใน Finance)
-    // ถ้าไม่มีข้อมูลจาก Finance เลย ให้ใช้แบบเดิม (manualExpArr)
-    if (finTotal > 0) {
-      return staffTotArr[i] + finTotal + entryVal('petty_cash', i+1)
-    }
-    return staffTotArr[i] + manualExpArr[i]
-  })
-  const kbizBalArr   = m12.map((_,i)=>kbizCarryArr[i]+kbizIncArr[i]-totalExpArr[i])
+  const totalExpArr = m12.map((_,i) => staffTotArr[i] + financeExpTotal(i+1))
+  const kbizBalArr  = m12.map((_,i)=>kbizCarryArr[i]+kbizIncArr[i]-totalExpArr[i])
 
   // Service breakdown (from campaigns)
   const serviceRows = SERVICE_TYPES.map(st => ({
