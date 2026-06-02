@@ -56,6 +56,7 @@ const MANUAL_CATS: Record<string, string> = {
   office_domain:   'ค่า Domain / Website / Hosting',
   office_equip:    'ค่าอุปกรณ์สำนักงาน / จิปาถะ',
   tax_vat_wht:     'ค่าภาษี (VAT / WHT) และงานราชการ',
+  other_expense:   '📦 อื่นๆ (จากการเงิน)',
 }
 
 function pct(num: number, den: number) {
@@ -180,6 +181,8 @@ export default function ControlBoardTab() {
       // Tax & Petty Cash
       tax_vat_wht:     'tax',
       petty_cash:      'petty_cash',
+      // อื่นๆ
+      other_expense:   'other',
     }
     const finCat = catMap[cat]
     if (!finCat) return null // null = no Finance source → stays manual
@@ -189,7 +192,7 @@ export default function ControlBoardTab() {
   const FINANCE_SYNCED = new Set([
     'office_rent','office_utils','office_software','office_domain','office_equip',
     'team_food','team_outing','team_party','team_snack','team_birthday','team_welcome','team_activity',
-    'mkt_ads','mkt_ops','tax_vat_wht','petty_cash',
+    'mkt_ads','mkt_ops','tax_vat_wht','petty_cash','other_expense',
   ])
 
   // ─── Campaign aggregations ───
@@ -399,7 +402,7 @@ export default function ControlBoardTab() {
   // รายจ่ายที่แสดงทีละ row ในตาราง (ยังใช้ resolveExpVal ตามเดิม)
   const expCats = ['team_food','team_outing','team_party','team_snack','team_birthday','team_welcome','team_activity',
                    'mkt_ads','mkt_ops','office_rent','office_utils','office_software','office_domain','office_equip',
-                   'tax_vat_wht','petty_cash']
+                   'tax_vat_wht','petty_cash','other_expense']
 
   // รายจ่ายทั้งหมด = staff (จาก payslips) + Finance expense_records ทั้งหมด
   // ยกเว้น salary/freelance ที่อยู่ใน payslips แล้ว → ไม่ double count
@@ -883,6 +886,26 @@ export default function ControlBoardTab() {
                   </tr>
                 )
               })}
+
+              {/* ═══ SECTION: อื่นๆ (จากการเงิน) ════════════════════════════ */}
+              {(() => {
+                const otherArr = m12.map((_,i) => resolveExpVal('other_expense', i+1))
+                if (sum(otherArr) === 0) return null
+                return (
+                  <>
+                    <SectionHeader id="other_exp" label="📦 อื่นๆ" color="bg-gray-50 text-gray-700"/>
+                    {!collapsed['other_exp'] && (
+                      <tr className="hover:bg-gray-50/50">
+                        <RowLabel label={MANUAL_CATS['other_expense']} indent={1} sub synced/>
+                        {m12.map((_,i)=>(
+                          <Cell key={i+1} m={i+1} value={otherArr[i]} readOnly color="text-gray-600"/>
+                        ))}
+                        <td className="px-2 py-1.5 text-right text-xs font-bold bg-gray-50 whitespace-nowrap text-gray-600">{formatCurrency(sum(otherArr))}</td>
+                      </tr>
+                    )}
+                  </>
+                )
+              })()}
 
               {/* ═══ SECTION: Services Sold ══════════════════════════════════ */}
               <SectionHeader id="services" label="🛒 Services ที่ขายออก (จาก Finance tab)" color="bg-violet-50 text-violet-800"/>
