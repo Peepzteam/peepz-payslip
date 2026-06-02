@@ -7,6 +7,7 @@ interface IncomeRecord {
   id: string; month: number; year: number
   amount: number; sources: string[]
   client_name: string | null; description: string | null; note: string | null
+  document_url: string | null
   transaction_date: string | null
   created_at: string
 }
@@ -14,6 +15,7 @@ interface ExpenseRecord {
   id: string; month: number; year: number
   category: string; amount: number
   description: string | null; note: string | null
+  document_url: string | null
   transaction_date: string | null
   created_at: string
 }
@@ -96,8 +98,8 @@ function todayISO() {
   return new Date().toISOString().split('T')[0]
 }
 
-const EMPTY_INCOME = { amount: '', sources: [] as string[], client_name: '', description: '', note: '', transaction_date: todayISO() }
-const EMPTY_EXPENSE = { category: 'rent', amount: '', description: '', note: '', transaction_date: todayISO() }
+const EMPTY_INCOME = { amount: '', sources: [] as string[], client_name: '', description: '', note: '', document_url: '', transaction_date: todayISO() }
+const EMPTY_EXPENSE = { category: 'rent', amount: '', description: '', note: '', document_url: '', transaction_date: todayISO() }
 
 export default function FinanceTab() {
   const now = new Date()
@@ -187,7 +189,7 @@ export default function FinanceTab() {
 
   function startEditIncome(r: IncomeRecord) {
     setEditingId(r.id); setEditType('income');
-    setEditIncomeForm({ amount: r.amount.toString(), sources: Array.isArray(r.sources) ? r.sources : [], client_name: r.client_name || '', description: r.description || '', note: r.note || '', transaction_date: r.transaction_date || todayISO() })
+    setEditIncomeForm({ amount: r.amount.toString(), sources: Array.isArray(r.sources) ? r.sources : [], client_name: r.client_name || '', description: r.description || '', note: r.note || '', document_url: r.document_url || '', transaction_date: r.transaction_date || todayISO() })
   }
 
   async function saveIncome() {
@@ -206,7 +208,7 @@ export default function FinanceTab() {
 
   function startEditExpense(r: ExpenseRecord) {
     setEditingId(r.id); setEditType('expense');
-    setEditExpenseForm({ category: r.category, amount: r.amount.toString(), description: r.description || '', note: r.note || '', transaction_date: r.transaction_date || todayISO() })
+    setEditExpenseForm({ category: r.category, amount: r.amount.toString(), description: r.description || '', note: r.note || '', document_url: r.document_url || '', transaction_date: r.transaction_date || todayISO() })
   }
 
   async function saveExpense() {
@@ -285,7 +287,7 @@ export default function FinanceTab() {
   function exportCSV() {
     const fmt = (n: number) => n === 0 ? '' : String(n)
     const rows: string[][] = [
-      ['#', 'วันที่', 'รายการ / ลูกค้า', 'หมวด', 'รายละเอียด', 'ยอดรับ', 'ยอดจ่าย', 'คงเหลือ']
+      ['#', 'วันที่', 'รายการ / ลูกค้า', 'หมวด', 'รายละเอียด', 'ยอดรับ', 'ยอดจ่าย', 'คงเหลือ', 'ลิงก์เอกสาร']
     ]
     ledgerWithBalance.forEach((row, idx) => {
       if (row.kind === 'payroll') {
@@ -310,7 +312,7 @@ export default function FinanceTab() {
           `สุทธิ ${p.net_pay}`,
         ].filter(Boolean).join(' | ')
 
-        rows.push([String(idx+1), date, name, cat, breakdown, '', fmt(Number(p.net_pay)), fmt(Number(row.balance))])
+        rows.push([String(idx+1), date, name, cat, breakdown, '', fmt(Number(p.net_pay)), fmt(Number(row.balance)), ''])
 
       } else if (row.kind === 'income') {
         const r = row.rec as IncomeRecord
@@ -320,13 +322,13 @@ export default function FinanceTab() {
         const detail = [sourcesLabel, r.note].filter(Boolean).join(' | ')
         rows.push([String(idx+1), r.transaction_date ?? '',
           [r.client_name, r.description].filter(Boolean).join(' - '),
-          'รายรับ', detail, fmt(Number(r.amount)), '', fmt(Number(row.balance))])
+          'รายรับ', detail, fmt(Number(r.amount)), '', fmt(Number(row.balance)), r.document_url ?? ''])
 
       } else {
         const r = row.rec as ExpenseRecord
         const detail = r.note ?? ''
         rows.push([String(idx+1), r.transaction_date ?? '', r.description ?? '',
-          catMeta(r.category).label, detail, '', fmt(Number(r.amount)), fmt(Number(row.balance))])
+          catMeta(r.category).label, detail, '', fmt(Number(r.amount)), fmt(Number(row.balance)), r.document_url ?? ''])
       }
     })
     const csv = '﻿' + rows.map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n')
@@ -590,6 +592,12 @@ export default function FinanceTab() {
                               {irec.client_name && <p className="font-medium text-gray-800 leading-tight">{irec.client_name}</p>}
                               {irec.description && <p className="text-xs text-gray-500">{irec.description}</p>}
                               {irec.note && <p className="text-xs text-gray-400 italic">{irec.note}</p>}
+                              {irec.document_url && (
+                                <a href={irec.document_url} target="_blank" rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 text-xs text-blue-500 hover:text-blue-700 hover:underline mt-0.5">
+                                  📎 เอกสารประกอบ
+                                </a>
+                              )}
                               <div className="flex flex-wrap gap-1 mt-0.5">
                                 {(Array.isArray(irec.sources) ? irec.sources : []).map((s: string) => (
                                   <span key={s} className={`text-xs px-1.5 py-0.5 rounded-full border ${sourceLabel(s).color}`}>{sourceLabel(s).label}</span>
@@ -601,6 +609,12 @@ export default function FinanceTab() {
                             <div>
                               {erec.description && <p className="font-medium text-gray-800 leading-tight">{erec.description}</p>}
                               {erec.note && <p className="text-xs text-gray-400 italic">{erec.note}</p>}
+                              {erec.document_url && (
+                                <a href={erec.document_url} target="_blank" rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 text-xs text-blue-500 hover:text-blue-700 hover:underline mt-0.5">
+                                  📎 เอกสารประกอบ
+                                </a>
+                              )}
                             </div>
                           )}
                         </td>
@@ -680,7 +694,7 @@ export default function FinanceTab() {
 
 // ─── Form fields ──────────────────────────────────────────────────────────────
 function IncomeFormFields({ form, setForm, toggleSource }: {
-  form: { amount: string; sources: string[]; client_name: string; description: string; note: string; transaction_date: string }
+  form: { amount: string; sources: string[]; client_name: string; description: string; note: string; document_url: string; transaction_date: string }
   setForm: (v: typeof form) => void
   toggleSource: (s: string) => void
 }) {
@@ -718,12 +732,18 @@ function IncomeFormFields({ form, setForm, toggleSource }: {
         <label className="block text-xs font-medium text-gray-600 mb-1">หมายเหตุ</label>
         <input value={form.note} onChange={e => setForm({...form, note: e.target.value})} placeholder="(ถ้ามี)" className={cls} />
       </div>
+      <div className="col-span-2">
+        <label className="block text-xs font-medium text-gray-600 mb-1">📎 ลิงก์เอกสารประกอบ</label>
+        <input type="url" value={form.document_url} onChange={e => setForm({...form, document_url: e.target.value})}
+          placeholder="https://drive.google.com/... หรือ Dropbox, OneDrive ฯลฯ" className={cls} />
+        <p className="text-xs text-gray-400 mt-0.5">เช่น ใบแจ้งหนี้, Statement, เอกสารสัญญา</p>
+      </div>
     </div>
   )
 }
 
 function ExpenseFormFields({ form, setForm }: {
-  form: { category: string; amount: string; description: string; note: string; transaction_date: string }
+  form: { category: string; amount: string; description: string; note: string; document_url: string; transaction_date: string }
   setForm: (v: typeof form) => void
 }) {
   const cls = 'w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-400'
@@ -759,6 +779,12 @@ function ExpenseFormFields({ form, setForm }: {
       <div className="col-span-2">
         <label className="block text-xs font-medium text-gray-600 mb-1">หมายเหตุ</label>
         <input value={form.note} onChange={e => setForm({...form, note: e.target.value})} placeholder="(ถ้ามี)" className={cls} />
+      </div>
+      <div className="col-span-2">
+        <label className="block text-xs font-medium text-gray-600 mb-1">📎 ลิงก์เอกสารประกอบ</label>
+        <input type="url" value={form.document_url} onChange={e => setForm({...form, document_url: e.target.value})}
+          placeholder="https://drive.google.com/... หรือ Dropbox, OneDrive ฯลฯ" className={cls} />
+        <p className="text-xs text-gray-400 mt-0.5">เช่น ใบแจ้งหนี้, สำเนาบัตรประชาชน, Book Bank Freelance</p>
       </div>
     </div>
   )
