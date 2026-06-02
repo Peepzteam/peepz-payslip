@@ -9,6 +9,7 @@ interface IncomeRecord {
   client_name: string | null; description: string | null; note: string | null
   document_url: string | null
   transaction_date: string | null
+  is_paid: boolean; paid_at: string | null
   created_at: string
 }
 interface ExpenseRecord {
@@ -17,6 +18,7 @@ interface ExpenseRecord {
   description: string | null; note: string | null
   document_url: string | null
   transaction_date: string | null
+  is_paid: boolean; paid_at: string | null
   created_at: string
 }
 
@@ -240,6 +242,26 @@ export default function FinanceTab() {
       if (!res.ok) { const e = await res.json().catch(() => ({})); alert('ลบรายจ่ายไม่สำเร็จ: ' + (e.error || res.status)); return }
       load()
     } catch { alert('เกิดข้อผิดพลาด ไม่สามารถลบรายจ่ายได้') }
+  }
+
+  async function togglePaidIncome(r: IncomeRecord) {
+    const nowPaid = !r.is_paid
+    const today = new Date().toISOString().slice(0, 10)
+    setIncomes(prev => prev.map(x => x.id === r.id ? { ...x, is_paid: nowPaid, paid_at: nowPaid ? today : null } : x))
+    await fetch(`/api/income-records/${r.id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ is_paid: nowPaid, paid_at: nowPaid ? today : null }),
+    })
+  }
+
+  async function togglePaidExpense(r: ExpenseRecord) {
+    const nowPaid = !r.is_paid
+    const today = new Date().toISOString().slice(0, 10)
+    setExpenses(prev => prev.map(x => x.id === r.id ? { ...x, is_paid: nowPaid, paid_at: nowPaid ? today : null } : x))
+    await fetch(`/api/expense-records/${r.id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ is_paid: nowPaid, paid_at: nowPaid ? today : null }),
+    })
   }
 
   function navigate(dir: number) {
@@ -478,6 +500,7 @@ export default function FinanceTab() {
                     <th className="px-4 py-3 text-left w-20">วันที่</th>
                     <th className="px-4 py-3 text-left">รายการ / ลูกค้า</th>
                     <th className="px-4 py-3 text-left w-32">หมวด</th>
+                    <th className="px-4 py-3 text-center w-28">สถานะ</th>
                     <th className="px-4 py-3 text-right w-32 text-emerald-600">ยอดรับ</th>
                     <th className="px-4 py-3 text-right w-32 text-rose-600">ยอดจ่าย</th>
                     <th className="px-4 py-3 text-right w-32 text-indigo-600">คงเหลือ</th>
@@ -490,7 +513,7 @@ export default function FinanceTab() {
                     if (isEditingThis) {
                       return (
                         <tr key={row.rec.id} className={`${row.kind === 'income' ? 'bg-emerald-50/60' : 'bg-rose-50/60'}`}>
-                          <td colSpan={8} className="px-4 py-3">
+                          <td colSpan={9} className="px-4 py-3">
                             {row.kind === 'income' ? (
                               <IncomeFormFields form={editIncomeForm} setForm={setEditIncomeForm}
                                 toggleSource={(s) => toggleSource(s, editIncomeForm, setEditIncomeForm)} />
@@ -564,6 +587,11 @@ export default function FinanceTab() {
                             </span>
                             <p className="text-xs text-gray-300 mt-0.5 whitespace-nowrap">จากสลิป</p>
                           </td>
+                          <td className="px-4 py-2.5 text-center">
+                            <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-medium whitespace-nowrap">
+                              ✅ จ่ายแล้ว
+                            </span>
+                          </td>
                           <td className="px-4 py-2.5 text-right"></td>
                           <td className={`px-4 py-2.5 text-right font-semibold whitespace-nowrap ${amtColor}`}>
                             {formatCurrency(Number(p.net_pay))}
@@ -627,6 +655,28 @@ export default function FinanceTab() {
                             <span className="text-xs text-emerald-600 font-medium whitespace-nowrap">รายรับ</span>
                           )}
                         </td>
+                        <td className="px-4 py-2.5 text-center">
+                          {irec && (
+                            <button onClick={() => togglePaidIncome(irec)}
+                              className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full font-medium border transition whitespace-nowrap ${
+                                irec.is_paid
+                                  ? 'bg-green-100 text-green-700 border-green-200 hover:bg-green-200'
+                                  : 'bg-amber-50 text-amber-600 border-amber-200 hover:bg-amber-100'
+                              }`}>
+                              {irec.is_paid ? '✅ รับแล้ว' : '⏳ รอรับ'}
+                            </button>
+                          )}
+                          {erec && (
+                            <button onClick={() => togglePaidExpense(erec)}
+                              className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full font-medium border transition whitespace-nowrap ${
+                                erec.is_paid
+                                  ? 'bg-green-100 text-green-700 border-green-200 hover:bg-green-200'
+                                  : 'bg-rose-50 text-rose-600 border-rose-200 hover:bg-rose-100'
+                              }`}>
+                              {erec.is_paid ? '✅ จ่ายแล้ว' : '⏳ รอจ่าย'}
+                            </button>
+                          )}
+                        </td>
                         <td className="px-4 py-2.5 text-right font-semibold text-emerald-600 whitespace-nowrap">
                           {isIncome ? formatCurrency(Number(row.rec.amount)) : ''}
                         </td>
@@ -659,7 +709,7 @@ export default function FinanceTab() {
                         {ftSlips.length > 0 && (
                           <tr className="bg-indigo-50/40 text-xs">
                             <td colSpan={4} className="px-4 py-1.5 text-indigo-600 font-medium">👤 พนักงานประจำ ({ftSlips.length} คน) — จากสลิป</td>
-                            <td></td>
+                            <td></td><td></td>
                             <td className="px-4 py-1.5 text-right font-semibold text-indigo-600">{formatCurrency(ftTotal)}</td>
                             <td colSpan={2}></td>
                           </tr>
@@ -667,7 +717,7 @@ export default function FinanceTab() {
                         {flSlips.length > 0 && (
                           <tr className="bg-amber-50/40 text-xs">
                             <td colSpan={4} className="px-4 py-1.5 text-amber-600 font-medium">🎨 Freelance ({flSlips.length} คน) — จากสลิป</td>
-                            <td></td>
+                            <td></td><td></td>
                             <td className="px-4 py-1.5 text-right font-semibold text-amber-600">{formatCurrency(flTotal)}</td>
                             <td colSpan={2}></td>
                           </tr>
@@ -677,6 +727,7 @@ export default function FinanceTab() {
                   })()}
                   <tr className="bg-gray-50 font-semibold text-sm">
                     <td colSpan={4} className="px-4 py-3 text-gray-600">รวมทั้งหมด</td>
+                    <td></td>
                     <td className="px-4 py-3 text-right text-emerald-600">{formatCurrency(totalIncome)}</td>
                     <td className="px-4 py-3 text-right text-rose-600">{formatCurrency(totalExpense)}</td>
                     <td className={`px-4 py-3 text-right font-bold ${netProfit >= 0 ? 'text-indigo-600' : 'text-red-500'}`}>{formatCurrency(netProfit)}</td>
