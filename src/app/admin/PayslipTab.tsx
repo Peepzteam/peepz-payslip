@@ -432,9 +432,9 @@ export default function PayslipTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <div className="flex items-center gap-2">
-          <h2 className="text-lg font-bold text-gray-800">สลิปเงินเดือน</h2>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-2 flex-wrap">
+          <h2 className="text-lg font-bold text-gray-800">🧾 สลิปเงินเดือน</h2>
           <select
             value={filterMonth}
             onChange={(e) => setFilterMonth(Number(e.target.value))}
@@ -455,20 +455,20 @@ export default function PayslipTab() {
           </select>
         </div>
         <div className="flex gap-2 flex-wrap">
-          <button onClick={downloadTemplate} className="flex items-center gap-1 text-sm border border-gray-300 px-3 py-2 rounded-lg hover:bg-gray-50">
-            <Download size={15} /> Template
+          <button onClick={downloadTemplate} className="flex items-center gap-1 text-xs sm:text-sm border border-gray-300 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg hover:bg-gray-50">
+            <Download size={14} /> <span className="hidden sm:inline">Template</span>
           </button>
-          <label className="flex items-center gap-1 text-sm border border-gray-300 px-3 py-2 rounded-lg hover:bg-gray-50 cursor-pointer">
-            <Upload size={15} /> {importing ? 'กำลังนำเข้า...' : 'Import Excel/CSV'}
+          <label className="flex items-center gap-1 text-xs sm:text-sm border border-gray-300 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg hover:bg-gray-50 cursor-pointer">
+            <Upload size={14} /> {importing ? 'นำเข้า...' : <><span className="hidden sm:inline">Import </span>Excel</>}
             <input ref={fileRef} type="file" accept=".xlsx,.csv" className="hidden" onChange={handleImport} disabled={importing} />
           </label>
           {payslips.length > 0 && (
-            <button onClick={exportCSV} className="flex items-center gap-1 text-sm border border-gray-300 px-3 py-2 rounded-lg hover:bg-gray-50 text-green-700 border-green-300">
-              <Download size={15} /> Export CSV
+            <button onClick={exportCSV} className="flex items-center gap-1 text-xs sm:text-sm border border-gray-300 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg hover:bg-gray-50 text-green-700 border-green-300">
+              <Download size={14} /> CSV
             </button>
           )}
-          <button onClick={() => { setShowForm(!showForm); setEditingPayslip(null); setOtItems([]) }} className="flex items-center gap-1 text-sm bg-indigo-600 text-white px-3 py-2 rounded-lg hover:bg-indigo-700">
-            <Plus size={15} /> สร้างสลิป
+          <button onClick={() => { setShowForm(!showForm); setEditingPayslip(null); setOtItems([]) }} className="flex items-center gap-1 text-xs sm:text-sm bg-indigo-600 text-white px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg hover:bg-indigo-700">
+            <Plus size={14} /> สร้างสลิป
           </button>
         </div>
       </div>
@@ -499,7 +499,7 @@ export default function PayslipTab() {
             }
           </div>
 
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
             {!editingPayslip && (
               guestMode ? (
                 <>
@@ -624,7 +624,7 @@ export default function PayslipTab() {
                 </div>
               </div>
             ) : (
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
                 <FField label="เงินเดือน (บาท)" value={form.base_salary} onChange={(v) => {
                   setForm({ ...form, base_salary: v })
                 }} type="number" />
@@ -756,7 +756,7 @@ export default function PayslipTab() {
                 </div>
               </div>
             )}
-            <div className="grid grid-cols-3 gap-4 mt-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mt-3">
               <FField label="รายได้อื่นๆ" value={form.other_income} onChange={(v) => setForm({ ...form, other_income: v })} type="number" />
               <div className="col-span-2">
                 <FField label="หมายเหตุ" value={form.other_income_note} onChange={(v) => setForm({ ...form, other_income_note: v })} />
@@ -818,7 +818,7 @@ export default function PayslipTab() {
                 </div>
               </div>
             )}
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
               <FField label={`ประกันสังคม${!isFreelance ? ' (875 บาท)' : ''}`} value={form.social_security} onChange={(v) => setForm({ ...form, social_security: v })} type="number" />
               <FField label={`ภาษีหัก ณ ที่จ่าย${isFreelance ? ' (3% ค่าจ้าง)' : ' (3% Incentive)'}`} value={form.withholding_tax} onChange={(v) => setForm({ ...form, withholding_tax: v })} type="number" />
               <FField label="หักอื่นๆ" value={form.other_deduction} onChange={(v) => setForm({ ...form, other_deduction: v })} type="number" />
@@ -838,7 +838,7 @@ export default function PayslipTab() {
                 )}
               </div>
             )}
-            <div className="grid grid-cols-3 gap-4 text-center">
+            <div className="grid grid-cols-3 gap-3 text-center">
               <div>
                 <p className="text-gray-500">รวมรายได้</p>
                 <p className="font-bold text-green-700">{formatCurrency(grossIncome)}</p>
@@ -854,7 +854,7 @@ export default function PayslipTab() {
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
             <FField label="หมายเหตุจาก Admin" value={form.admin_note} onChange={(v) => setForm({ ...form, admin_note: v })} />
             <FField label="🗓 กำหนดจ่ายเงิน" value={form.due_date} onChange={(v) => setForm({ ...form, due_date: v })} type="date" />
             <FField label="วันที่โอนเงิน (ถ้าโอนแล้ว)" value={form.transfer_date} onChange={(v) => setForm({ ...form, transfer_date: v })} type="date" />
@@ -894,13 +894,13 @@ export default function PayslipTab() {
         </form>
       )}
 
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-x-auto">
         {loading ? (
           <p className="p-6 text-center text-gray-400">กำลังโหลด...</p>
         ) : payslips.length === 0 ? (
           <p className="p-6 text-center text-gray-400">ไม่มีสลิปสำหรับช่วงเวลานี้</p>
         ) : (
-          <table className="w-full text-sm">
+          <table className="w-full text-sm" style={{minWidth:'600px'}}>
             <thead className="bg-gray-50 text-gray-500 text-xs uppercase">
               <tr>
                 <th className="px-4 py-3 text-left">พนักงาน</th>

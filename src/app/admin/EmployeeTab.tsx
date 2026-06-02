@@ -237,7 +237,7 @@ export default function EmployeeTab() {
         </form>
       )}
 
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-x-auto">
         {loading ? (
           <p className="p-6 text-center text-gray-400">กำลังโหลด...</p>
         ) : employees.length === 0 ? (
@@ -379,7 +379,7 @@ export default function EmployeeTab() {
                           {addingSalary === emp.id && (
                             <div className="bg-white rounded-xl border border-indigo-200 p-4 mb-3 space-y-3">
                               <p className="text-xs font-semibold text-indigo-700">+ บันทึกการปรับเงินเดือน</p>
-                              <div className="grid grid-cols-3 gap-3">
+                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                                 <div>
                                   <label className="block text-xs font-medium text-gray-600 mb-1">วันที่มีผล *</label>
                                   <input type="date" value={salaryForm.effective_date}
@@ -523,7 +523,7 @@ function TaxSummaryForEmployee({ employee, history }: { employee: Employee; hist
   return (
     <div className="px-4 py-3 bg-gradient-to-r from-indigo-50 to-purple-50 border-t border-indigo-100">
       <p className="text-xs font-semibold text-indigo-700 mb-2">📊 ประมาณการภาษีปี {currentYear + 543}</p>
-      <div className="grid grid-cols-4 gap-2 text-xs text-center">
+      <div className="grid grid-cols-4 gap-1 sm:gap-2 text-xs text-center">
         <div>
           <p className="text-gray-400">รายได้ต่อปี</p>
           <p className="font-bold text-gray-700">{formatCurrency(annualIncome)}</p>

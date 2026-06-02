@@ -415,25 +415,25 @@ export default function FinanceTab() {
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
           <div>
             <h2 className="text-lg font-bold text-gray-800">💰 การเงิน</h2>
-            <p className="text-xs text-gray-400">Peepz Team by Haus of Mumu</p>
+            <p className="text-xs text-gray-400 hidden sm:block">Peepz Team by Haus of Mumu</p>
           </div>
           {view === 'month' && (
             <div className="flex items-center gap-1 bg-white border border-orange-200 rounded-lg px-1">
               <button onClick={() => navigate(-1)} className="p-1.5 hover:bg-orange-50 rounded text-orange-500"><ChevronLeft size={15} /></button>
-              <span className="text-sm font-semibold px-2 min-w-[120px] text-center text-orange-700">{MONTH_FULL[month-1]} {year+543}</span>
+              <span className="text-sm font-semibold px-2 min-w-[110px] text-center text-orange-700">{MONTH_FULL[month-1]} {year+543}</span>
               <button onClick={() => navigate(1)} className="p-1.5 hover:bg-orange-50 rounded text-orange-500"><ChevronRight size={15} /></button>
             </div>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <div className="flex bg-orange-50 rounded-lg p-0.5 border border-orange-100">
             {(['month','year'] as const).map(v => (
               <button key={v} onClick={() => setView(v)}
-                className={`px-3 py-1.5 rounded-md text-xs font-medium transition ${view===v ? 'bg-white shadow-sm text-orange-700' : 'text-orange-400 hover:text-orange-600'}`}>
+                className={`px-2.5 sm:px-3 py-1.5 rounded-md text-xs font-medium transition ${view===v ? 'bg-white shadow-sm text-orange-700' : 'text-orange-400 hover:text-orange-600'}`}>
                 {v === 'month' ? '📋 รายเดือน' : '📊 สรุปรายปี'}
               </button>
             ))}
@@ -441,16 +441,16 @@ export default function FinanceTab() {
           {view === 'month' && (
             <>
               <button onClick={() => { setShowForm(showForm === 'income' ? null : 'income'); setFormError(null) }}
-                className="flex items-center gap-1.5 bg-emerald-500 text-white px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-emerald-600 shadow-sm">
+                className="flex items-center gap-1 bg-emerald-500 text-white px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-emerald-600 shadow-sm">
                 <Plus size={13} /> รายรับ
               </button>
               <button onClick={() => { setShowForm(showForm === 'expense' ? null : 'expense'); setFormError(null) }}
-                className="flex items-center gap-1.5 bg-rose-500 text-white px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-rose-600 shadow-sm">
+                className="flex items-center gap-1 bg-rose-500 text-white px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-rose-600 shadow-sm">
                 <Plus size={13} /> รายจ่าย
               </button>
               <button onClick={exportCSV}
-                className="flex items-center gap-1.5 border border-gray-300 text-gray-600 px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-gray-50">
-                <Download size={13} /> Export CSV
+                className="flex items-center gap-1 border border-gray-300 text-gray-600 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-gray-50">
+                <Download size={13} /> <span className="hidden sm:inline">Export </span>CSV
               </button>
             </>
           )}
@@ -471,35 +471,35 @@ export default function FinanceTab() {
       ) : (
         <>
           {/* Summary cards */}
-          <div className="grid grid-cols-3 gap-3">
-            <div className="bg-white border border-emerald-200 rounded-xl p-4 flex items-center gap-3">
-              <div className="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center shrink-0">
-                <TrendingUp size={18} className="text-emerald-600" />
+          <div className="grid grid-cols-3 sm:grid-cols-3 gap-2 sm:gap-3">
+            <div className="bg-white border border-emerald-200 rounded-xl p-3 sm:p-4 flex items-center gap-2 sm:gap-3">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 bg-emerald-100 rounded-xl flex items-center justify-center shrink-0">
+                <TrendingUp size={16} className="text-emerald-600" />
               </div>
-              <div>
-                <p className="text-xs text-gray-500">รายรับเดือนนี้</p>
-                <p className="text-xl font-bold text-emerald-600">{formatCurrency(totalIncome)}</p>
-                <p className="text-xs text-gray-400">{incomes.length} รายการ</p>
-              </div>
-            </div>
-            <div className="bg-white border border-rose-200 rounded-xl p-4 flex items-center gap-3">
-              <div className="w-10 h-10 bg-rose-100 rounded-xl flex items-center justify-center shrink-0">
-                <TrendingDown size={18} className="text-rose-600" />
-              </div>
-              <div>
-                <p className="text-xs text-gray-500">รายจ่ายเดือนนี้</p>
-                <p className="text-xl font-bold text-rose-600">{formatCurrency(totalExpense)}</p>
-                <p className="text-xs text-gray-400">{expenses.length + payslips.length} รายการ {payslips.length > 0 && <span className="text-indigo-400">(สลิป {payslips.length})</span>}</p>
+              <div className="min-w-0">
+                <p className="text-xs text-gray-500 truncate">รายรับ</p>
+                <p className="text-sm sm:text-xl font-bold text-emerald-600 truncate">{formatCurrency(totalIncome)}</p>
+                <p className="text-xs text-gray-400 hidden sm:block">{incomes.length} รายการ</p>
               </div>
             </div>
-            <div className={`bg-white rounded-xl p-4 flex items-center gap-3 border ${netProfit >= 0 ? 'border-indigo-200' : 'border-gray-200'}`}>
-              <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${netProfit >= 0 ? 'bg-indigo-100' : 'bg-gray-100'}`}>
-                <Wallet size={18} className={netProfit >= 0 ? 'text-indigo-600' : 'text-gray-500'} />
+            <div className="bg-white border border-rose-200 rounded-xl p-3 sm:p-4 flex items-center gap-2 sm:gap-3">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 bg-rose-100 rounded-xl flex items-center justify-center shrink-0">
+                <TrendingDown size={16} className="text-rose-600" />
               </div>
-              <div>
-                <p className="text-xs text-gray-500">กำไร / ขาดทุน</p>
-                <p className={`text-xl font-bold ${netProfit >= 0 ? 'text-indigo-600' : 'text-red-500'}`}>{formatCurrency(netProfit)}</p>
-                <p className="text-xs text-gray-400">{netProfit >= 0 ? '✅ บวก' : '⚠️ ลบ'}</p>
+              <div className="min-w-0">
+                <p className="text-xs text-gray-500 truncate">รายจ่าย</p>
+                <p className="text-sm sm:text-xl font-bold text-rose-600 truncate">{formatCurrency(totalExpense)}</p>
+                <p className="text-xs text-gray-400 hidden sm:block">{expenses.length + payslips.length} รายการ</p>
+              </div>
+            </div>
+            <div className={`bg-white rounded-xl p-3 sm:p-4 flex items-center gap-2 sm:gap-3 border ${netProfit >= 0 ? 'border-indigo-200' : 'border-gray-200'}`}>
+              <div className={`w-8 h-8 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center shrink-0 ${netProfit >= 0 ? 'bg-indigo-100' : 'bg-gray-100'}`}>
+                <Wallet size={16} className={netProfit >= 0 ? 'text-indigo-600' : 'text-gray-500'} />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs text-gray-500 truncate">กำไร/ขาดทุน</p>
+                <p className={`text-sm sm:text-xl font-bold truncate ${netProfit >= 0 ? 'text-indigo-600' : 'text-red-500'}`}>{formatCurrency(netProfit)}</p>
+                <p className="text-xs text-gray-400 hidden sm:block">{netProfit >= 0 ? '✅ บวก' : '⚠️ ลบ'}</p>
               </div>
             </div>
           </div>
@@ -529,7 +529,7 @@ export default function FinanceTab() {
           )}
 
           {/* Combined Ledger Table */}
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+          <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-x-auto">
             {ledgerWithBalance.length === 0 ? (
               <div className="p-12 text-center">
                 <p className="text-gray-300 text-4xl mb-3">📒</p>
@@ -537,7 +537,7 @@ export default function FinanceTab() {
                 <p className="text-xs text-gray-400 mt-1">กดปุ่ม "รายรับ" หรือ "รายจ่าย" ด้านบนเพื่อเพิ่ม</p>
               </div>
             ) : (
-              <table className="w-full text-sm">
+              <table className="w-full text-sm" style={{minWidth:'640px'}}>
                 <thead className="bg-gray-50 text-gray-500 text-xs uppercase border-b border-gray-100">
                   <tr>
                     <th className="px-4 py-3 text-center w-10">#</th>
