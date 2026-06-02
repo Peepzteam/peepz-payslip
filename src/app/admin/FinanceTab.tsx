@@ -171,8 +171,11 @@ export default function FinanceTab() {
         body: JSON.stringify({ ...incomeForm, amount: Number(incomeForm.amount), month, year }),
       })
       if (!res.ok) { const e = await res.json().catch(() => ({})); alert('บันทึกรายรับไม่สำเร็จ: ' + (e.error || res.status)); return }
+      const created: IncomeRecord = await res.json()
+      setIncomes(prev => [created, ...prev])
+      setAllIncomes(prev => [created, ...prev])
       setIncomeForm({...EMPTY_INCOME, transaction_date: todayISO()})
-      setShowForm(null); load()
+      setShowForm(null)
     } catch { alert('เกิดข้อผิดพลาด ไม่สามารถบันทึกรายรับได้') }
   }
 
@@ -184,8 +187,11 @@ export default function FinanceTab() {
         body: JSON.stringify({ ...expenseForm, amount: Number(expenseForm.amount), month, year }),
       })
       if (!res.ok) { const e = await res.json().catch(() => ({})); alert('บันทึกรายจ่ายไม่สำเร็จ: ' + (e.error || res.status)); return }
+      const created: ExpenseRecord = await res.json()
+      setExpenses(prev => [created, ...prev])
+      setAllExpenses(prev => [created, ...prev])
       setExpenseForm({...EMPTY_EXPENSE, transaction_date: todayISO()})
-      setShowForm(null); load()
+      setShowForm(null)
     } catch { alert('เกิดข้อผิดพลาด ไม่สามารถบันทึกรายจ่ายได้') }
   }
 
@@ -204,7 +210,11 @@ export default function FinanceTab() {
         body: JSON.stringify({ ...editIncomeForm, amount: Number(editIncomeForm.amount), month: d.getMonth()+1, year: d.getFullYear() }),
       })
       if (!res.ok) { const e = await res.json().catch(() => ({})); alert('แก้ไขรายรับไม่สำเร็จ: ' + (e.error || res.status)); return }
-      setEditingId(null); setEditType(null); load()
+      const updated: IncomeRecord = await res.json()
+      const upsert = (prev: IncomeRecord[]) => prev.map(x => x.id === updated.id ? updated : x)
+      setIncomes(upsert)
+      setAllIncomes(upsert)
+      setEditingId(null); setEditType(null)
     } catch { alert('เกิดข้อผิดพลาด ไม่สามารถแก้ไขรายรับได้') } finally { setSaving(false) }
   }
 
@@ -223,25 +233,31 @@ export default function FinanceTab() {
         body: JSON.stringify({ ...editExpenseForm, amount: Number(editExpenseForm.amount), month: d.getMonth()+1, year: d.getFullYear() }),
       })
       if (!res.ok) { const e = await res.json().catch(() => ({})); alert('แก้ไขรายจ่ายไม่สำเร็จ: ' + (e.error || res.status)); return }
-      setEditingId(null); setEditType(null); load()
+      const updated: ExpenseRecord = await res.json()
+      const upsert = (prev: ExpenseRecord[]) => prev.map(x => x.id === updated.id ? updated : x)
+      setExpenses(upsert)
+      setAllExpenses(upsert)
+      setEditingId(null); setEditType(null)
     } catch { alert('เกิดข้อผิดพลาด ไม่สามารถแก้ไขรายจ่ายได้') } finally { setSaving(false) }
   }
 
   async function deleteIncome(id: string) {
     if (!confirm('ลบรายการนี้?')) return
+    setIncomes(prev => prev.filter(x => x.id !== id))
+    setAllIncomes(prev => prev.filter(x => x.id !== id))
     try {
       const res = await fetch(`/api/income-records/${id}`, { method: 'DELETE' })
-      if (!res.ok) { const e = await res.json().catch(() => ({})); alert('ลบรายรับไม่สำเร็จ: ' + (e.error || res.status)); return }
-      load()
-    } catch { alert('เกิดข้อผิดพลาด ไม่สามารถลบรายรับได้') }
+      if (!res.ok) { const e = await res.json().catch(() => ({})); alert('ลบรายรับไม่สำเร็จ: ' + (e.error || res.status)); load(); return }
+    } catch { alert('เกิดข้อผิดพลาด ไม่สามารถลบรายรับได้'); load() }
   }
   async function deleteExpense(id: string) {
     if (!confirm('ลบรายการนี้?')) return
+    setExpenses(prev => prev.filter(x => x.id !== id))
+    setAllExpenses(prev => prev.filter(x => x.id !== id))
     try {
       const res = await fetch(`/api/expense-records/${id}`, { method: 'DELETE' })
-      if (!res.ok) { const e = await res.json().catch(() => ({})); alert('ลบรายจ่ายไม่สำเร็จ: ' + (e.error || res.status)); return }
-      load()
-    } catch { alert('เกิดข้อผิดพลาด ไม่สามารถลบรายจ่ายได้') }
+      if (!res.ok) { const e = await res.json().catch(() => ({})); alert('ลบรายจ่ายไม่สำเร็จ: ' + (e.error || res.status)); load(); return }
+    } catch { alert('เกิดข้อผิดพลาด ไม่สามารถลบรายจ่ายได้'); load() }
   }
 
   async function togglePaidIncome(r: IncomeRecord) {
@@ -421,7 +437,12 @@ export default function FinanceTab() {
       </div>
 
       {loading ? (
-        <p className="text-center text-orange-300 py-8">กำลังโหลด...</p>
+        <div className="space-y-3 animate-pulse">
+          <div className="grid grid-cols-3 gap-3">
+            {[0,1,2].map(i => <div key={i} className="h-24 bg-gray-100 rounded-xl" />)}
+          </div>
+          <div className="h-64 bg-gray-100 rounded-xl" />
+        </div>
       ) : view === 'year' ? (
         <YearView data={yearlyData} year={year} yearTotal={yearTotal}
           allIncomes={allIncomes} allExpenses={allExpenses} allPayslips={allPayslips}
