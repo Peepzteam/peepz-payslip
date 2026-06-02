@@ -64,28 +64,28 @@ const INCOME_SOURCES = [
 
 const EXPENSE_CATEGORIES = [
   // 🏢 Office & System — ตรงกับ Control Board
-  { val: 'rent',           label: '🏠 ค่าเช่าออฟฟิศ',                        color: 'text-teal-600',   bg: 'bg-teal-50',   group: 'Office' },
-  { val: 'utilities',      label: '⚡ ค่าน้ำ / ไฟ / อินเทอร์เน็ต',           color: 'text-cyan-600',   bg: 'bg-cyan-50',   group: 'Office' },
-  { val: 'software',       label: '💻 ค่า Software (Canva, Google, ChatGPT ฯลฯ)', color: 'text-violet-600', bg: 'bg-violet-50', group: 'Office' },
-  { val: 'domain',         label: '🌐 ค่า Domain / Website / Hosting',        color: 'text-blue-600',   bg: 'bg-blue-50',   group: 'Office' },
-  { val: 'equipment',      label: '🖥️ ค่าอุปกรณ์สำนักงาน / จิปาถะ',          color: 'text-sky-600',    bg: 'bg-sky-50',    group: 'Office' },
+  { val: 'rent',           label: '🏠 ค่าเช่าออฟฟิศ',        color: 'text-teal-600',   bg: 'bg-teal-50',   group: 'Office' },
+  { val: 'utilities',      label: '⚡ ค่าน้ำ/ไฟ/เน็ต',        color: 'text-cyan-600',   bg: 'bg-cyan-50',   group: 'Office' },
+  { val: 'software',       label: '💻 ค่า Software',           color: 'text-violet-600', bg: 'bg-violet-50', group: 'Office' },
+  { val: 'domain',         label: '🌐 Domain/Hosting',         color: 'text-blue-600',   bg: 'bg-blue-50',   group: 'Office' },
+  { val: 'equipment',      label: '🖥️ ค่าอุปกรณ์',            color: 'text-sky-600',    bg: 'bg-sky-50',    group: 'Office' },
   // 🎉 Team & Culture — ตรงกับ Control Board
-  { val: 'team_food',      label: '🍽️ ค่าเลี้ยงข้าวพนักงาน',                 color: 'text-pink-600',   bg: 'bg-pink-50',   group: 'Team' },
-  { val: 'team_outing',    label: '🏕️ ค่า Outing / Team building',           color: 'text-rose-600',   bg: 'bg-rose-50',   group: 'Team' },
-  { val: 'team_party',     label: '🎉 ค่า Party บริษัท / Celebration',        color: 'text-fuchsia-600',bg: 'bg-fuchsia-50',group: 'Team' },
-  { val: 'team_snack',     label: '🧃 ค่า Snack / เครื่องดื่มในออฟฟิศ',      color: 'text-orange-500', bg: 'bg-orange-50', group: 'Team' },
-  { val: 'team_birthday',  label: '🎂 ค่า Birthday / Gift พนักงาน',           color: 'text-pink-500',   bg: 'bg-pink-50',   group: 'Team' },
-  { val: 'team_welcome',   label: '🤝 ค่า Welcome / Farewell พนักงาน',        color: 'text-emerald-600',bg: 'bg-emerald-50',group: 'Team' },
-  { val: 'team_activity',  label: '🎯 ค่า Internal Activity',                 color: 'text-lime-600',   bg: 'bg-lime-50',   group: 'Team' },
+  { val: 'team_food',      label: '🍽️ เลี้ยงข้าวทีม',         color: 'text-pink-600',   bg: 'bg-pink-50',   group: 'Team' },
+  { val: 'team_outing',    label: '🏕️ Outing/Team building',  color: 'text-rose-600',   bg: 'bg-rose-50',   group: 'Team' },
+  { val: 'team_party',     label: '🎉 Party บริษัท',           color: 'text-fuchsia-600',bg: 'bg-fuchsia-50',group: 'Team' },
+  { val: 'team_snack',     label: '🧃 Snack/เครื่องดื่ม',     color: 'text-orange-500', bg: 'bg-orange-50', group: 'Team' },
+  { val: 'team_birthday',  label: '🎂 Birthday/Gift',          color: 'text-pink-500',   bg: 'bg-pink-50',   group: 'Team' },
+  { val: 'team_welcome',   label: '🤝 Welcome/Farewell',       color: 'text-emerald-600',bg: 'bg-emerald-50',group: 'Team' },
+  { val: 'team_activity',  label: '🎯 Internal Activity',      color: 'text-lime-600',   bg: 'bg-lime-50',   group: 'Team' },
   // 📢 Marketing
-  { val: 'ads',            label: '📢 ค่าโฆษณา (Ads)',                       color: 'text-orange-600', bg: 'bg-orange-50', group: 'Marketing' },
-  { val: 'marketing_ops',  label: '🛠️ ค่า Marketing Operations',              color: 'text-yellow-600', bg: 'bg-yellow-50', group: 'Marketing' },
+  { val: 'ads',            label: '📢 ค่าโฆษณา',              color: 'text-orange-600', bg: 'bg-orange-50', group: 'Marketing' },
+  { val: 'marketing_ops',  label: '🛠️ Marketing Ops',          color: 'text-yellow-600', bg: 'bg-yellow-50', group: 'Marketing' },
   // 💼 เงินเดือน / ภาษี / อื่น
-  { val: 'salary',         label: '👥 เงินเดือนพนักงาน',                      color: 'text-indigo-600', bg: 'bg-indigo-50', group: 'HR' },
-  { val: 'freelance',      label: '🎨 ค่าจ้าง Freelance',                     color: 'text-amber-600',  bg: 'bg-amber-50',  group: 'HR' },
-  { val: 'tax',            label: '🏛️ ภาษี VAT / WHT / อื่นๆ',              color: 'text-red-600',    bg: 'bg-red-50',    group: 'Tax' },
-  { val: 'petty_cash',     label: '💼 Petty Cash',                            color: 'text-orange-600', bg: 'bg-orange-50', group: 'Other' },
-  { val: 'other',          label: '📦 อื่นๆ',                                color: 'text-gray-600',   bg: 'bg-gray-50',   group: 'Other' },
+  { val: 'salary',         label: '👥 เงินเดือน',              color: 'text-indigo-600', bg: 'bg-indigo-50', group: 'HR' },
+  { val: 'freelance',      label: '🎨 Freelance',              color: 'text-amber-600',  bg: 'bg-amber-50',  group: 'HR' },
+  { val: 'tax',            label: '🏛️ ภาษี VAT/WHT',          color: 'text-red-600',    bg: 'bg-red-50',    group: 'Tax' },
+  { val: 'petty_cash',     label: '💼 Petty Cash',             color: 'text-orange-600', bg: 'bg-orange-50', group: 'Other' },
+  { val: 'other',          label: '📦 อื่นๆ',                  color: 'text-gray-600',   bg: 'bg-gray-50',   group: 'Other' },
 ]
 
 const MONTHS = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.']
@@ -520,7 +520,7 @@ export default function FinanceTab() {
                     <th className="px-4 py-3 text-center w-10">#</th>
                     <th className="px-4 py-3 text-left w-20">วันที่</th>
                     <th className="px-4 py-3 text-left">รายการ / ลูกค้า</th>
-                    <th className="px-4 py-3 text-left w-32">หมวด</th>
+                    <th className="px-4 py-3 text-left w-28 max-w-[7rem]">หมวด</th>
                     <th className="px-4 py-3 text-center w-28">สถานะ</th>
                     <th className="px-4 py-3 text-right w-32 text-emerald-600">ยอดรับ</th>
                     <th className="px-4 py-3 text-right w-32 text-rose-600">ยอดจ่าย</th>
@@ -602,8 +602,8 @@ export default function FinanceTab() {
                               )}
                             </div>
                           </td>
-                          <td className="px-4 py-2.5">
-                            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full whitespace-nowrap inline-block ${badgeCls}`}>
+                          <td className="px-4 py-2.5 max-w-[7rem]">
+                            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full whitespace-nowrap inline-block truncate max-w-full ${badgeCls}`}>
                               {isFreelance ? '🎨 Freelance' : '👤 พนักงานประจำ'}
                             </span>
                             <p className="text-xs text-gray-300 mt-0.5 whitespace-nowrap">จากสลิป</p>
@@ -667,9 +667,10 @@ export default function FinanceTab() {
                             </div>
                           )}
                         </td>
-                        <td className="px-4 py-2.5">
+                        <td className="px-4 py-2.5 max-w-[7rem]">
                           {erec ? (
-                            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full whitespace-nowrap inline-block ${catMeta(erec.category).bg} ${catMeta(erec.category).color}`}>
+                            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full inline-block truncate max-w-full ${catMeta(erec.category).bg} ${catMeta(erec.category).color}`}
+                              title={catMeta(erec.category).label}>
                               {catMeta(erec.category).label}
                             </span>
                           ) : (
