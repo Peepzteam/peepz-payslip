@@ -34,6 +34,7 @@ interface PayslipRecord {
   social_security: number
   withholding_tax: number
   transfer_date: string | null
+  is_paid: boolean
   guest_name: string | null
   guest_type: string | null
   employee: { id: string; name: string; employee_code: string; type: string } | null
@@ -609,8 +610,12 @@ export default function FinanceTab() {
                             <p className="text-xs text-gray-300 mt-0.5 whitespace-nowrap">จากสลิป</p>
                           </td>
                           <td className="px-4 py-2.5 text-center">
-                            <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-medium whitespace-nowrap">
-                              ✅ จ่ายแล้ว
+                            <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium whitespace-nowrap ${
+                              p.is_paid
+                                ? 'bg-green-100 text-green-700'
+                                : 'bg-amber-50 text-amber-600 border border-amber-200'
+                            }`}>
+                              {p.is_paid ? '✅ จ่ายแล้ว' : '⏳ รอจ่าย'}
                             </span>
                           </td>
                           <td className="px-4 py-2.5 text-right"></td>
