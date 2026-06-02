@@ -263,6 +263,11 @@ export default function FinanceTab() {
 
   async function togglePaidIncome(r: IncomeRecord) {
     const nowPaid = !r.is_paid
+    const label = [r.client_name, r.description].filter(Boolean).join(' – ') || 'รายรับนี้'
+    const msg = nowPaid
+      ? `ยืนยันรับเงินแล้ว?\n\n💰 ${label}\n฿${Number(r.amount).toLocaleString()}`
+      : `ยืนยันเปลี่ยนกลับเป็น "รอรับ"?\n\n💰 ${label}`
+    if (!confirm(msg)) return
     const today = new Date().toISOString().slice(0, 10)
     setIncomes(prev => prev.map(x => x.id === r.id ? { ...x, is_paid: nowPaid, paid_at: nowPaid ? today : null } : x))
     await fetch(`/api/income-records/${r.id}`, {
@@ -273,6 +278,12 @@ export default function FinanceTab() {
 
   async function togglePaidExpense(r: ExpenseRecord) {
     const nowPaid = !r.is_paid
+    const cat = catMeta(r.category).label
+    const label = r.description || cat
+    const msg = nowPaid
+      ? `ยืนยันจ่ายเงินแล้ว?\n\n💸 ${label}\n฿${Number(r.amount).toLocaleString()}`
+      : `ยืนยันเปลี่ยนกลับเป็น "รอจ่าย"?\n\n💸 ${label}`
+    if (!confirm(msg)) return
     const today = new Date().toISOString().slice(0, 10)
     setExpenses(prev => prev.map(x => x.id === r.id ? { ...x, is_paid: nowPaid, paid_at: nowPaid ? today : null } : x))
     await fetch(`/api/expense-records/${r.id}`, {
