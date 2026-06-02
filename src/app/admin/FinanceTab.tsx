@@ -127,6 +127,7 @@ export default function FinanceTab() {
   const [editIncomeForm, setEditIncomeForm] = useState({...EMPTY_INCOME})
   const [editExpenseForm, setEditExpenseForm] = useState({...EMPTY_EXPENSE})
   const [saving, setSaving] = useState(false)
+  const [formError, setFormError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -165,35 +166,43 @@ export default function FinanceTab() {
   const netProfit = totalIncome - totalExpense
 
   async function addIncome() {
-    if (!incomeForm.amount) return
+    if (!incomeForm.amount || Number(incomeForm.amount) <= 0) {
+      setFormError('กรุณาใส่ยอดเงิน')
+      return
+    }
+    setFormError(null)
     try {
       const res = await fetch('/api/income-records', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...incomeForm, amount: Number(incomeForm.amount), month, year }),
       })
-      if (!res.ok) { const e = await res.json().catch(() => ({})); alert('บันทึกรายรับไม่สำเร็จ: ' + (e.error || res.status)); return }
+      if (!res.ok) { const e = await res.json().catch(() => ({})); setFormError('บันทึกไม่สำเร็จ: ' + (e.error || res.status)); return }
       const created: IncomeRecord = await res.json()
       setIncomes(prev => [created, ...prev])
       setAllIncomes(prev => [created, ...prev])
       setIncomeForm({...EMPTY_INCOME, transaction_date: todayISO()})
-      setShowForm(null)
-    } catch { alert('เกิดข้อผิดพลาด ไม่สามารถบันทึกรายรับได้') }
+      setShowForm(null); setFormError(null)
+    } catch { setFormError('เกิดข้อผิดพลาด ลองใหม่อีกครั้ง') }
   }
 
   async function addExpense() {
-    if (!expenseForm.amount) return
+    if (!expenseForm.amount || Number(expenseForm.amount) <= 0) {
+      setFormError('กรุณาใส่ยอดเงิน')
+      return
+    }
+    setFormError(null)
     try {
       const res = await fetch('/api/expense-records', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...expenseForm, amount: Number(expenseForm.amount), month, year }),
       })
-      if (!res.ok) { const e = await res.json().catch(() => ({})); alert('บันทึกรายจ่ายไม่สำเร็จ: ' + (e.error || res.status)); return }
+      if (!res.ok) { const e = await res.json().catch(() => ({})); setFormError('บันทึกไม่สำเร็จ: ' + (e.error || res.status)); return }
       const created: ExpenseRecord = await res.json()
       setExpenses(prev => [created, ...prev])
       setAllExpenses(prev => [created, ...prev])
       setExpenseForm({...EMPTY_EXPENSE, transaction_date: todayISO()})
-      setShowForm(null)
-    } catch { alert('เกิดข้อผิดพลาด ไม่สามารถบันทึกรายจ่ายได้') }
+      setShowForm(null); setFormError(null)
+    } catch { setFormError('เกิดข้อผิดพลาด ลองใหม่อีกครั้ง') }
   }
 
   function startEditIncome(r: IncomeRecord) {
@@ -431,11 +440,11 @@ export default function FinanceTab() {
           </div>
           {view === 'month' && (
             <>
-              <button onClick={() => setShowForm(showForm === 'income' ? null : 'income')}
+              <button onClick={() => { setShowForm(showForm === 'income' ? null : 'income'); setFormError(null) }}
                 className="flex items-center gap-1.5 bg-emerald-500 text-white px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-emerald-600 shadow-sm">
                 <Plus size={13} /> รายรับ
               </button>
-              <button onClick={() => setShowForm(showForm === 'expense' ? null : 'expense')}
+              <button onClick={() => { setShowForm(showForm === 'expense' ? null : 'expense'); setFormError(null) }}
                 className="flex items-center gap-1.5 bg-rose-500 text-white px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-rose-600 shadow-sm">
                 <Plus size={13} /> รายจ่าย
               </button>
@@ -500,9 +509,10 @@ export default function FinanceTab() {
             <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <p className="font-semibold text-emerald-800 text-sm">+ เพิ่มรายรับ</p>
-                <button onClick={() => setShowForm(null)}><X size={15} className="text-gray-400" /></button>
+                <button onClick={() => { setShowForm(null); setFormError(null) }}><X size={15} className="text-gray-400" /></button>
               </div>
               <IncomeFormFields form={incomeForm} setForm={setIncomeForm} toggleSource={(s) => toggleSource(s, incomeForm, setIncomeForm)} />
+              {formError && <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">⚠️ {formError}</p>}
               <button onClick={addIncome} className="bg-emerald-500 text-white px-5 py-2 rounded-lg text-sm font-semibold hover:bg-emerald-600">💾 บันทึกรายรับ</button>
             </div>
           )}
@@ -510,9 +520,10 @@ export default function FinanceTab() {
             <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <p className="font-semibold text-rose-800 text-sm">+ เพิ่มรายจ่าย</p>
-                <button onClick={() => setShowForm(null)}><X size={15} className="text-gray-400" /></button>
+                <button onClick={() => { setShowForm(null); setFormError(null) }}><X size={15} className="text-gray-400" /></button>
               </div>
               <ExpenseFormFields form={expenseForm} setForm={setExpenseForm} />
+              {formError && <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">⚠️ {formError}</p>}
               <button onClick={addExpense} className="bg-rose-500 text-white px-5 py-2 rounded-lg text-sm font-semibold hover:bg-rose-600">💾 บันทึกรายจ่าย</button>
             </div>
           )}
