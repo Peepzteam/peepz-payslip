@@ -58,6 +58,7 @@ export default function PayslipTab() {
     other_deduction: '', other_deduction_note: '',
     admin_note: '',
     transfer_date: '',
+    due_date: '',
     send_email: true,
   })
   const [confirmingSend, setConfirmingSend] = useState<string | null>(null)
@@ -209,6 +210,7 @@ export default function PayslipTab() {
       other_deduction_note: form.other_deduction_note,
       admin_note: form.admin_note,
       transfer_date: form.transfer_date || null,
+      due_date: form.due_date || null,
       send_email: form.send_email,
       line_items: isFreelance ? lineItems.filter((i) => i.total > 0) : [],
     }
@@ -267,6 +269,19 @@ export default function PayslipTab() {
     setPayslips((prev) => prev.filter((p) => p.id !== id))
   }
 
+  async function markPaid(payslip: Payslip) {
+    const today = new Date().toISOString().slice(0, 10)
+    const confirmed = confirm(`ยืนยันการจ่ายเงิน?\n\n👤 ${payslip.employee?.name ?? payslip.guest_name}\n💰 ${formatCurrency(payslip.net_pay)}\n📅 วันที่จ่าย: ${today}`)
+    if (!confirmed) return
+    const res = await fetch(`/api/payslips/${payslip.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ is_paid: true, transfer_date: today }),
+    })
+    if (!res.ok) { alert('เกิดข้อผิดพลาด'); return }
+    setPayslips((prev) => prev.map((p) => p.id === payslip.id ? { ...p, is_paid: true, transfer_date: today } : p))
+  }
+
   function startEdit(p: Payslip) {
     if (p.line_items?.length) setLineItems(p.line_items)
     else setLineItems([{ ...EMPTY_LINE }])
@@ -305,6 +320,7 @@ export default function PayslipTab() {
       other_deduction_note: p.other_deduction_note || '',
       admin_note: p.admin_note || '',
       transfer_date: p.transfer_date || '',
+      due_date: p.due_date || '',
       send_email: false,
     })
     setShowForm(true)
@@ -838,8 +854,9 @@ export default function PayslipTab() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-3 gap-4">
             <FField label="หมายเหตุจาก Admin" value={form.admin_note} onChange={(v) => setForm({ ...form, admin_note: v })} />
+            <FField label="🗓 กำหนดจ่ายเงิน" value={form.due_date} onChange={(v) => setForm({ ...form, due_date: v })} type="date" />
             <FField label="วันที่โอนเงิน (ถ้าโอนแล้ว)" value={form.transfer_date} onChange={(v) => setForm({ ...form, transfer_date: v })} type="date" />
           </div>
 
@@ -904,12 +921,23 @@ export default function PayslipTab() {
                   </td>
                   <td className="px-4 py-3 text-right">
                     <p className="font-semibold text-gray-800">{formatCurrency(p.net_pay)}</p>
-                    {p.transfer_date && (
-                      <p className="text-xs text-green-600">✅ โอนแล้ว {new Date(p.transfer_date).toLocaleDateString('th-TH')}</p>
-                    )}
+                    {p.is_paid ? (
+                      <p className="text-xs text-green-600 font-medium">✅ จ่ายแล้ว {p.transfer_date ? new Date(p.transfer_date).toLocaleDateString('th-TH') : ''}</p>
+                    ) : p.due_date ? (
+                      <p className={`text-xs font-medium ${new Date(p.due_date) < new Date() ? 'text-red-500' : 'text-amber-500'}`}>
+                        🗓 ครบกำหนด {new Date(p.due_date).toLocaleDateString('th-TH')}
+                        {new Date(p.due_date) < new Date() ? ' ⚠️ เกินกำหนด' : ''}
+                      </p>
+                    ) : null}
                   </td>
                   <td className="px-4 py-3">
-                    <div className="flex items-center justify-center gap-1">
+                    <div className="flex items-center justify-center gap-1 flex-wrap">
+                      {!p.is_paid && (
+                        <button onClick={() => markPaid(p)} title="กดเมื่อจ่ายแล้ว"
+                          className="flex items-center gap-1 px-2 py-1 text-xs bg-green-500 text-white rounded-lg hover:bg-green-600 font-medium">
+                          <Banknote size={12} /> จ่ายแล้ว
+                        </button>
+                      )}
                       <button onClick={() => setViewPayslip(p)} title="ดูสลิป"
                         className="p-1.5 text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 rounded">
                         <Eye size={14} />

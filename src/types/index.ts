@@ -86,6 +86,8 @@ export interface Payslip {
   acknowledged_at: string | null
   admin_note: string | null
   transfer_date: string | null
+  due_date: string | null
+  is_paid: boolean
   line_items: LineItem[] | null
   ot_items: OtItem[] | null
   incentive_items: IncentiveItem[] | null
