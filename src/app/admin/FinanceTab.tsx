@@ -547,7 +547,7 @@ export default function FinanceTab() {
                     <th className="px-4 py-3 text-center w-28">สถานะ</th>
                     <th className="px-4 py-3 text-right w-32 text-emerald-600">ยอดรับ</th>
                     <th className="px-4 py-3 text-right w-32 text-rose-600">ยอดจ่าย</th>
-                    <th className="px-4 py-3 text-right w-32 text-indigo-600">คงเหลือ</th>
+                    <th className="px-4 py-3 text-right w-24 text-gray-400 font-normal text-xs normal-case tracking-normal">คงเหลือ</th>
                     <th className="px-2 py-3 w-14"></th>
                   </tr>
                 </thead>
@@ -644,7 +644,7 @@ export default function FinanceTab() {
                           <td className={`px-4 py-2.5 text-right font-semibold whitespace-nowrap ${amtColor}`}>
                             {formatCurrency(Number(p.net_pay))}
                           </td>
-                          <td className={`px-4 py-2.5 text-right font-bold whitespace-nowrap ${row.balance >= 0 ? 'text-indigo-600' : 'text-red-500'}`}>
+                          <td className={`px-4 py-2.5 text-right text-xs whitespace-nowrap ${row.balance >= 0 ? 'text-gray-400' : 'text-red-400'}`}>
                             {formatCurrency(row.balance)}
                           </td>
                           <td className="px-2 py-2.5" />
@@ -732,7 +732,7 @@ export default function FinanceTab() {
                         <td className="px-4 py-2.5 text-right font-semibold text-rose-600 whitespace-nowrap">
                           {!isIncome ? formatCurrency(Number(row.rec.amount)) : ''}
                         </td>
-                        <td className={`px-4 py-2.5 text-right font-bold whitespace-nowrap ${row.balance >= 0 ? 'text-indigo-600' : 'text-red-500'}`}>
+                        <td className={`px-4 py-2.5 text-right text-xs whitespace-nowrap ${row.balance >= 0 ? 'text-gray-400' : 'text-red-400'}`}>
                           {formatCurrency(row.balance)}
                         </td>
                         <td className="px-2 py-2.5">
@@ -779,7 +779,7 @@ export default function FinanceTab() {
                     <td></td>
                     <td className="px-4 py-3 text-right text-emerald-600">{formatCurrency(totalIncome)}</td>
                     <td className="px-4 py-3 text-right text-rose-600">{formatCurrency(totalExpense)}</td>
-                    <td className={`px-4 py-3 text-right font-bold ${netProfit >= 0 ? 'text-indigo-600' : 'text-red-500'}`}>{formatCurrency(netProfit)}</td>
+                    <td className={`px-4 py-3 text-right text-xs ${netProfit >= 0 ? 'text-gray-400' : 'text-red-400'}`}>{formatCurrency(netProfit)}</td>
                     <td />
                   </tr>
                 </tfoot>
