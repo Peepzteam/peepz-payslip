@@ -819,14 +819,7 @@ export default function FinanceTab({ isReadOnly = false }: { isReadOnly?: boolea
                 <div className={`flex items-center gap-2 rounded-full px-3 py-1.5 text-xs border ${prevWHTSubmitted ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
                   {prevWHTSubmitted
                     ? <><ShieldCheck size={12} /> WHT {MONTHS[prevMonth-1]} {formatCurrency(prevMonthWHT)} — นำส่งแล้ว</>
-                    : <><AlertTriangle size={12} /> WHT {MONTHS[prevMonth-1]} {formatCurrency(prevMonthWHT)} — ยังไม่ส่ง (ครบ 7 {MONTH_FULL[month-1]})
-                        {!isReadOnly && (
-                          <button onClick={() => {
-                            setExpenseForm({ category: 'tax', amount: prevMonthWHT.toFixed(2), description: `ภ.ง.ด.53 เดือน${MONTHS[prevMonth-1]} ${prevYear+543}`, note: '', document_url: '', transaction_date: todayISO() })
-                            setShowForm('expense')
-                          }} className="ml-1 underline font-semibold hover:no-underline">+ บันทึก</button>
-                        )}
-                      </>
+                    : <><AlertTriangle size={12} /> WHT {MONTHS[prevMonth-1]} {formatCurrency(prevMonthWHT)} — ยังไม่ส่ง (ครบ 7 {MONTH_FULL[month-1]})</>
                   }
                 </div>
               )}
