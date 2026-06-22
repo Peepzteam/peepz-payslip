@@ -26,13 +26,13 @@ interface PayslipRow {
 const MONTHS_SHORT = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.']
 const MONTHS_FULL = ['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม']
 const SERVICE_TYPES = [
-  { val: 'live', label: '📺 Live Commerce' },
-  { val: 'influencer', label: '🌟 Influencer Review' },
-  { val: 'content', label: '📝 Content Production' },
-  { val: 'ads', label: '📢 Ads' },
-  { val: 'seeding', label: '🌱 Seeding Marketing' },
-  { val: 'event', label: '🎪 Event' },
-  { val: 'other', label: '🔧 Others' },
+  { val: 'live',       label: '📺 Live Commerce',      color: 'text-orange-600',  bg: 'bg-orange-50',  border: 'border-orange-200', bar: '#f97316' },
+  { val: 'influencer', label: '🌟 Influencer Review',  color: 'text-purple-600',  bg: 'bg-purple-50',  border: 'border-purple-200', bar: '#a855f7' },
+  { val: 'content',    label: '📝 Content Production', color: 'text-blue-600',    bg: 'bg-blue-50',    border: 'border-blue-200',   bar: '#3b82f6' },
+  { val: 'ads',        label: '📢 Ads',                color: 'text-yellow-600',  bg: 'bg-yellow-50',  border: 'border-yellow-200', bar: '#eab308' },
+  { val: 'seeding',    label: '🌱 Seeding Marketing',  color: 'text-green-600',   bg: 'bg-green-50',   border: 'border-green-200',  bar: '#22c55e' },
+  { val: 'event',      label: '🎪 Event',              color: 'text-pink-600',    bg: 'bg-pink-50',    border: 'border-pink-200',   bar: '#ec4899' },
+  { val: 'other',      label: '🔧 Others',             color: 'text-gray-500',    bg: 'bg-gray-50',    border: 'border-gray-200',   bar: '#9ca3af' },
 ]
 
 // control_entries categories
@@ -916,20 +916,22 @@ export default function ControlBoardTab() {
                 return (
                   <React.Fragment key={s.val}>
                     {/* แถวจำนวน */}
-                    <tr className="hover:bg-gray-50/50">
+                    <tr className={`hover:bg-gray-50/50`}>
                       <RowLabel label={`${s.label} — จำนวนงาน`} indent={1} sub/>
                       {m12.map((_,i)=>(
-                        <td key={i+1} className="px-2 py-1.5 text-center text-xs text-violet-600 font-medium" style={{minWidth:80}}>
-                          {s.countArr[i] > 0 ? s.countArr[i] : <span className="text-gray-200">—</span>}
+                        <td key={i+1} className={`px-2 py-1.5 text-center text-xs font-medium ${s.color}`} style={{minWidth:80}}>
+                          {s.countArr[i] > 0
+                            ? <span className={`inline-block px-1.5 py-0.5 rounded-full text-[11px] font-semibold ${s.bg} ${s.border} border`}>{s.countArr[i]}</span>
+                            : <span className="text-gray-200">—</span>}
                         </td>
                       ))}
-                      <td className="px-2 py-1.5 text-center text-xs font-bold text-violet-700 bg-gray-50">{sum(s.countArr)} งาน</td>
+                      <td className={`px-2 py-1.5 text-center text-xs font-bold bg-gray-50 ${s.color}`}>{sum(s.countArr)} งาน</td>
                     </tr>
                     {/* แถวรายได้ */}
                     <tr className="hover:bg-gray-50/50">
                       <RowLabel label={`${s.label} — รายได้`} indent={1} sub/>
-                      {m12.map((_,i)=><Cell key={i+1} m={i+1} value={s.revenueArr[i]} readOnly color="text-violet-600"/>)}
-                      <td className="px-2 py-1.5 text-right text-xs font-bold text-violet-600 bg-gray-50 whitespace-nowrap">{formatCurrency(sum(s.revenueArr))}</td>
+                      {m12.map((_,i)=><Cell key={i+1} m={i+1} value={s.revenueArr[i]} readOnly color={s.color}/>)}
+                      <td className={`px-2 py-1.5 text-right text-xs font-bold bg-gray-50 whitespace-nowrap ${s.color}`}>{formatCurrency(sum(s.revenueArr))}</td>
                     </tr>
                   </React.Fragment>
                 )
@@ -939,6 +941,72 @@ export default function ControlBoardTab() {
           </table>
         </div>
       </div>}
+
+      {/* ═══ Service Revenue Chart ════════════════════════════════════════════ */}
+      {(() => {
+        const activeServices = serviceRows.filter(s => sum(s.revenueArr) > 0)
+        if (activeServices.length === 0) return null
+        const monthlyTotals = m12.map((_,i) => activeServices.reduce((s,sv) => s + sv.revenueArr[i], 0))
+        const maxVal = Math.max(...monthlyTotals, 1)
+        return (
+          <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+            <h3 className="text-sm font-bold text-gray-700 mb-1">📊 รายได้ Services รายเดือน</h3>
+            <p className="text-xs text-gray-400 mb-4">แยกตามประเภทงาน (stacked bar)</p>
+
+            {/* Legend */}
+            <div className="flex flex-wrap gap-3 mb-4">
+              {activeServices.map(s => (
+                <div key={s.val} className="flex items-center gap-1.5">
+                  <span className="w-3 h-3 rounded-sm inline-block flex-shrink-0" style={{backgroundColor: s.bar}}/>
+                  <span className="text-xs text-gray-600">{s.label}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* Stacked Bar Chart */}
+            <div className="flex items-end gap-1.5" style={{height: 160}}>
+              {m12.map((_,i) => {
+                const total = monthlyTotals[i]
+                const heightPct = total > 0 ? (total / maxVal) * 100 : 0
+                return (
+                  <div key={i} className="flex-1 flex flex-col justify-end items-center gap-0.5 group relative">
+                    {/* Tooltip */}
+                    {total > 0 && (
+                      <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 hidden group-hover:block z-10 bg-gray-800 text-white text-[10px] rounded px-2 py-1 whitespace-nowrap shadow-lg">
+                        {MONTHS_SHORT[i]}<br/>
+                        {activeServices.filter(s=>s.revenueArr[i]>0).map(s=>(
+                          <div key={s.val}>{s.label.split(' ').slice(1).join(' ')}: {formatCurrency(s.revenueArr[i])}</div>
+                        ))}
+                        <div className="font-bold border-t border-gray-600 mt-0.5 pt-0.5">รวม: {formatCurrency(total)}</div>
+                      </div>
+                    )}
+                    {/* Stacked segments */}
+                    <div className="w-full rounded-t overflow-hidden" style={{height: `${heightPct}%`, minHeight: total > 0 ? 4 : 0, display: 'flex', flexDirection: 'column-reverse'}}>
+                      {activeServices.map(s => {
+                        const segPct = total > 0 ? (s.revenueArr[i] / total) * 100 : 0
+                        if (segPct === 0) return null
+                        return <div key={s.val} style={{height: `${segPct}%`, backgroundColor: s.bar, minHeight: 2}}/>
+                      })}
+                    </div>
+                    <span className="text-[9px] text-gray-400 mt-1">{MONTHS_SHORT[i]}</span>
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Count summary */}
+            <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {activeServices.map(s => (
+                <div key={s.val} className={`rounded-lg p-2 border ${s.bg} ${s.border}`}>
+                  <p className={`text-[10px] font-medium ${s.color}`}>{s.label}</p>
+                  <p className={`text-sm font-bold ${s.color}`}>{formatCurrency(sum(s.revenueArr))}</p>
+                  <p className="text-[10px] text-gray-400">{sum(s.countArr)} งาน</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )
+      })()}
     </div>
   )
 }
