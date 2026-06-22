@@ -176,10 +176,6 @@ export default function FinanceTab({ isReadOnly = false }: { isReadOnly?: boolea
   const [dupWarning, setDupWarning] = useState<{ existing: ExpenseRecord[]; pending: typeof expenseForm } | null>(null)
   const [bankImportOpen, setBankImportOpen] = useState(false)
   const [bankImportText, setBankImportText] = useState('')
-  const [aiAnalysis, setAiAnalysis] = useState<string>('')
-  const [aiUpdatedAt, setAiUpdatedAt] = useState<string | null>(null)
-  const [aiLoading, setAiLoading] = useState(false)
-  const [aiOpen, setAiOpen] = useState(false)
   const [bankImportRows, setBankImportRows] = useState<{ txn: BankTxn; matches: LedgerRow[] }[]>([])
   const [bankImportAnalyzed, setBankImportAnalyzed] = useState(false)
 
@@ -220,18 +216,6 @@ export default function FinanceTab({ isReadOnly = false }: { isReadOnly?: boolea
 
   useEffect(() => { load() }, [load])
 
-  // Load cached AI analysis for this month/year
-  useEffect(() => {
-    setAiAnalysis('')
-    setAiUpdatedAt(null)
-    setAiOpen(false)
-    fetch(`/api/ai-analysis-cache?month=${month}&year=${year}`)
-      .then(r => r.json())
-      .then(d => {
-        if (d?.analysis) { setAiAnalysis(d.analysis); setAiUpdatedAt(d.updated_at) }
-      })
-      .catch(() => {})
-  }, [month, year])
 
   const totalIncome = incomes.reduce((s, r) => s + Number(r.amount), 0)
   const totalExpenseManual = expenses.reduce((s, r) => s + Number(r.amount), 0)
@@ -261,13 +245,13 @@ export default function FinanceTab({ isReadOnly = false }: { isReadOnly?: boolea
   const prevYear = month === 1 ? year - 1 : year
   const nextMonth = month === 12 ? 1 : month + 1
   const nextMonthYear = month === 12 ? year + 1 : year
-  const prevMonthWHT = pastPayslips
-    .filter(p => p.period_month === prevMonth && p.period_year === prevYear)
-    .reduce((s, p) => s + Number(p.withholding_tax), 0)
+  const prevMonthPayslips = pastPayslips.filter(p => p.period_month === prevMonth && p.period_year === prevYear)
+  const prevMonthWHT = prevMonthPayslips.reduce((s, p) => s + Number(p.withholding_tax), 0)
+  const prevWHT1 = prevMonthPayslips.filter(p => !isPayslipFreelance(p)).reduce((s, p) => s + Number(p.withholding_tax), 0)
+  const prevWHT53 = prevMonthPayslips.filter(p => isPayslipFreelance(p)).reduce((s, p) => s + Number(p.withholding_tax), 0)
   const currentMonthWHT = payslips.reduce((s, p) => s + Number(p.withholding_tax), 0)
-  const taxPaidThisMonth = expenses.filter(e => e.category === 'tax' && e.is_paid)
-  const prevWHTSubmitted = prevMonthWHT > 0 &&
-    taxPaidThisMonth.some(e => Math.abs(Number(e.amount) - prevMonthWHT) < 200)
+  const currentWHT1 = payslips.filter(p => !isPayslipFreelance(p)).reduce((s, p) => s + Number(p.withholding_tax), 0)
+  const currentWHT53 = payslips.filter(p => isPayslipFreelance(p)).reduce((s, p) => s + Number(p.withholding_tax), 0)
 
   async function addIncome() {
     if (!incomeForm.amount || Number(incomeForm.amount) <= 0) {
@@ -454,64 +438,6 @@ export default function FinanceTab({ isReadOnly = false }: { isReadOnly?: boolea
     })
   }
 
-  async function runAiAnalysis() {
-    setAiLoading(true)
-    setAiAnalysis('')
-    setAiOpen(true)
-    try {
-      const expenseByCategory: Record<string, number> = {}
-      for (const e of expenses) {
-        const label = EXPENSE_CATEGORIES.find(c => c.val === e.category)?.label ?? e.category
-        expenseByCategory[label] = (expenseByCategory[label] ?? 0) + Number(e.amount)
-      }
-      if (totalPayroll > 0) expenseByCategory['👥 เงินเดือน (payroll)'] = (expenseByCategory['👥 เงินเดือน (payroll)'] ?? 0) + totalPayroll
-
-      const incomeBySource: Record<string, number> = {}
-      for (const inc of incomes) {
-        const srcs = inc.sources?.length ? inc.sources : ['other']
-        for (const s of srcs) {
-          const label = INCOME_SOURCES.find(x => x.val === s)?.label ?? s
-          incomeBySource[label] = (incomeBySource[label] ?? 0) + Number(inc.amount) / srcs.length
-        }
-      }
-
-      // WHT from employee payslips (ภ.ง.ด.1)
-      const whtFromPayslips = payslips.reduce((s, p) => s + Number(p.withholding_tax), 0)
-      // Year-to-date totals
-      const yearToDateIncome = allIncomes.filter(r => r.year === year && r.month <= month).reduce((s, r) => s + Number(r.amount), 0)
-      const yearToDateExpense = allExpenses.filter(r => r.year === year && r.month <= month).reduce((s, r) => s + Number(r.amount), 0)
-        + allPayslips.filter(p => p.period_year === year && p.period_month <= month).reduce((s, p) => s + Number(p.net_pay), 0)
-      const yearToDateProfit = yearToDateIncome - yearToDateExpense
-
-      const res = await fetch('/api/ai-analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          month, year, monthName: MONTH_FULL[month - 1],
-          totalIncome, totalExpense, netProfit,
-          actualIncome, actualExpense, actualProfit,
-          carryBalance, currentBalance,
-          prevMonthWHT, currentMonthWHT, prevWHTSubmitted,
-          expenseByCategory, incomeBySource, totalPayroll,
-          whtFromPayslips, yearToDateIncome, yearToDateProfit,
-        }),
-      })
-      if (!res.ok || !res.body) { setAiAnalysis('เกิดข้อผิดพลาด ลองใหม่อีกครั้ง'); setAiLoading(false); return }
-      const reader = res.body.getReader()
-      const decoder = new TextDecoder()
-      let text = ''
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        text += decoder.decode(value, { stream: true })
-        setAiAnalysis(text)
-      }
-    } catch {
-      setAiAnalysis('เกิดข้อผิดพลาด กรุณาลองใหม่')
-    } finally {
-      setAiLoading(false)
-    }
-  }
 
   function navigate(dir: number) {
     let m = month + dir, y = year
@@ -835,76 +761,31 @@ export default function FinanceTab({ isReadOnly = false }: { isReadOnly?: boolea
             </div>
           </div>
 
-          {/* WHT Tracker — compact inline strip */}
+          {/* WHT Tracker — แยก ภ.ง.ด.1 และ ภ.ง.ด.53 */}
           {(prevMonthWHT > 0 || currentMonthWHT > 0) && (
             <div className="flex flex-wrap gap-2">
-              {prevMonthWHT > 0 && (
-                <div className="flex items-center gap-2 rounded-full px-3 py-1.5 text-xs border bg-orange-50 border-orange-200 text-orange-700">
-                  <ShieldCheck size={12} /> WHT {MONTHS[prevMonth-1]} {formatCurrency(prevMonthWHT)} — ครบกำหนด 15 {MONTH_FULL[month-1]}
+              {prevWHT1 > 0 && (
+                <div className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs border bg-orange-50 border-orange-200 text-orange-700">
+                  <ShieldCheck size={12} /> ภ.ง.ด.1 ({MONTHS[prevMonth-1]}) {formatCurrency(prevWHT1)} — ส่ง 15 {MONTH_FULL[month-1]}
                 </div>
               )}
-              {currentMonthWHT > 0 && (
-                <div className="flex items-center gap-2 rounded-full px-3 py-1.5 text-xs border bg-amber-50 border-amber-200 text-amber-700">
-                  🏛️ WHT {MONTHS[month-1]} {formatCurrency(currentMonthWHT)} — ส่งเดือนหน้า (15 {MONTH_FULL[nextMonth-1]})
+              {prevWHT53 > 0 && (
+                <div className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs border bg-orange-50 border-orange-200 text-orange-700">
+                  <ShieldCheck size={12} /> ภ.ง.ด.53 ({MONTHS[prevMonth-1]}) {formatCurrency(prevWHT53)} — ส่ง 15 {MONTH_FULL[month-1]}
+                </div>
+              )}
+              {currentWHT1 > 0 && (
+                <div className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs border bg-amber-50 border-amber-200 text-amber-700">
+                  🏛️ ภ.ง.ด.1 ({MONTHS[month-1]}) {formatCurrency(currentWHT1)} — ส่งเดือนหน้า 15 {MONTH_FULL[nextMonth-1]}
+                </div>
+              )}
+              {currentWHT53 > 0 && (
+                <div className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs border bg-amber-50 border-amber-200 text-amber-700">
+                  🏛️ ภ.ง.ด.53 ({MONTHS[month-1]}) {formatCurrency(currentWHT53)} — ส่งเดือนหน้า 15 {MONTH_FULL[nextMonth-1]}
                 </div>
               )}
             </div>
           )}
-
-          {/* AI Tax & Finance Summary — auto-updated 1st, 15th, last day of month */}
-          <div className="bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-200 rounded-xl p-3">
-            <div className="flex items-center justify-between gap-2 flex-wrap">
-              <div>
-                <p className="text-xs font-semibold text-indigo-700">🧮 สรุปภาษีและการเงิน โดย AI CFO</p>
-                {aiUpdatedAt ? (
-                  <p className="text-[10px] text-indigo-400 mt-0.5">
-                    อัปเดตล่าสุด: {new Date(aiUpdatedAt).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                    {' · '}อัปเดตอัตโนมัติ 1, 15, สิ้นเดือน
-                  </p>
-                ) : (
-                  <p className="text-[10px] text-indigo-400 mt-0.5">อัปเดตอัตโนมัติ 1, 15, สิ้นเดือน</p>
-                )}
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                {!aiAnalysis && !aiLoading && (
-                  <button
-                    onClick={async () => {
-                      setAiLoading(true)
-                      try {
-                        const res = await fetch('/api/ai-analysis-cache', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ month, year, triggerType: 'manual' }),
-                        })
-                        const d = await res.json()
-                        if (d.analysis) { setAiAnalysis(d.analysis); setAiUpdatedAt(new Date().toISOString()); setAiOpen(true) }
-                      } catch { /* ignore */ } finally { setAiLoading(false) }
-                    }}
-                    className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
-                  >
-                    🧮 สร้างรายงาน
-                  </button>
-                )}
-                {aiLoading && (
-                  <div className="flex items-center gap-1.5 text-xs text-indigo-600">
-                    <span className="animate-spin w-3 h-3 border-2 border-indigo-400 border-t-transparent rounded-full inline-block" />
-                    กำลังวิเคราะห์...
-                  </div>
-                )}
-                {aiAnalysis && !aiLoading && (
-                  <button onClick={() => setAiOpen(o => !o)}
-                    className="text-xs font-medium px-3 py-1.5 rounded-lg border border-indigo-300 text-indigo-600 hover:bg-indigo-100 transition-colors">
-                    {aiOpen ? '▲ ซ่อน' : '▼ ดูรายละเอียด'}
-                  </button>
-                )}
-              </div>
-            </div>
-            {aiOpen && aiAnalysis && (
-              <div className="mt-3 pt-3 border-t border-indigo-200">
-                <div className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{aiAnalysis}</div>
-              </div>
-            )}
-          </div>
 
           {/* Duplicate expense warning */}
           {dupWarning && (
