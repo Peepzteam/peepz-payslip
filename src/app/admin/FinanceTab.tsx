@@ -1401,7 +1401,26 @@ export default function FinanceTab({ isReadOnly = false }: { isReadOnly?: boolea
                               </p>
                             )}
                             {!matched && (
-                              <p className="text-xs text-red-500 font-medium mt-0.5">⚠️ ไม่พบในระบบ — ต้องเพิ่มรายการ</p>
+                              <div className="flex items-center gap-2 mt-1 flex-wrap">
+                                <p className="text-xs text-red-500 font-medium">⚠️ ไม่พบในระบบ</p>
+                                {!isReadOnly && (
+                                  <button
+                                    onClick={() => {
+                                      if (isExp) {
+                                        setExpenseForm({ category: 'other', amount: r.txn.withdrawal.toFixed(2), description: r.txn.detail, note: 'จาก K-BIZ', document_url: '', transaction_date: r.txn.date })
+                                        setShowForm('expense')
+                                      } else {
+                                        setIncomeForm({ amount: r.txn.deposit.toFixed(2), sources: [], client_name: '', description: r.txn.detail, note: 'จาก K-BIZ', document_url: '', transaction_date: r.txn.date })
+                                        setShowForm('income')
+                                      }
+                                      setBankImportOpen(false)
+                                    }}
+                                    className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition-colors"
+                                  >
+                                    + เพิ่มเข้าระบบ
+                                  </button>
+                                )}
+                              </div>
                             )}
                           </div>
                         </div>
