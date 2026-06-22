@@ -14,56 +14,72 @@ export async function POST(req: NextRequest) {
     expenseByCategory,
     incomeBySource,
     totalPayroll,
+    whtFromPayslips,
+    yearToDateIncome,
+    yearToDateProfit,
   } = body
 
-  const prompt = `คุณเป็นที่ปรึกษาการเงินสำหรับ SME ไทย วิเคราะห์ข้อมูลการเงินของบริษัทด้านล่างนี้ แล้วให้คำแนะนำที่เป็นประโยชน์จริงๆ สั้นกระชับ ตรงประเด็น ภาษาไทยเป็นกันเอง
+  const thb = (v: number) => v.toLocaleString('th-TH', { style: 'currency', currency: 'THB' })
 
-**ข้อมูลเดือน ${monthName} ${year + 543}**
-
-💰 ภาพรวม:
-- รายรับตามแผน: ${totalIncome.toLocaleString('th-TH', {style:'currency', currency:'THB'})}
-- รายจ่ายตามแผน: ${totalExpense.toLocaleString('th-TH', {style:'currency', currency:'THB'})} (เงินเดือน+ค่าใช้จ่าย)
-- กำไรสุทธิตามแผน: ${netProfit.toLocaleString('th-TH', {style:'currency', currency:'THB'})}
-
-✅ เกิดขึ้นจริงแล้ว (ณ ปัจจุบัน):
-- รายรับจริง: ${actualIncome.toLocaleString('th-TH', {style:'currency', currency:'THB'})}
-- รายจ่ายจริง: ${actualExpense.toLocaleString('th-TH', {style:'currency', currency:'THB'})}
-- กำไรจริง: ${actualProfit.toLocaleString('th-TH', {style:'currency', currency:'THB'})}
-
-🏦 สถานะเงินสด:
-- ยอดยกมา: ${carryBalance.toLocaleString('th-TH', {style:'currency', currency:'THB'})}
-- ยอดเงินสดปัจจุบัน (ยกมา + เกิดจริงเดือนนี้): ${currentBalance.toLocaleString('th-TH', {style:'currency', currency:'THB'})}
-
-👥 เงินเดือนพนักงาน: ${totalPayroll.toLocaleString('th-TH', {style:'currency', currency:'THB'})}
-
-📊 รายจ่ายแยกตามหมวด:
-${Object.entries(expenseByCategory as Record<string, number>)
-  .sort(([,a],[,b]) => b - a)
-  .map(([k, v]) => `- ${k}: ${(v as number).toLocaleString('th-TH', {style:'currency', currency:'THB'})}`)
-  .join('\n')}
-
-📈 รายรับแยกตามประเภท:
-${Object.entries(incomeBySource as Record<string, number>)
-  .sort(([,a],[,b]) => b - a)
-  .map(([k, v]) => `- ${k}: ${(v as number).toLocaleString('th-TH', {style:'currency', currency:'THB'})}`)
-  .join('\n')}
-
-🏛️ WHT:
-- เดือนที่แล้ว: ${prevMonthWHT > 0 ? prevMonthWHT.toLocaleString('th-TH', {style:'currency', currency:'THB'}) + (prevWHTSubmitted ? ' (นำส่งแล้ว ✅)' : ' (ยังไม่นำส่ง ⚠️)') : 'ไม่มี'}
-- เดือนนี้: ${currentMonthWHT > 0 ? currentMonthWHT.toLocaleString('th-TH', {style:'currency', currency:'THB'}) + ' (นำส่งเดือนหน้า)' : 'ไม่มี'}
+  const prompt = `คุณคือ CFO / หัวหน้าฝ่ายบัญชีของ SME ไทย (บริษัท Digital Marketing) ที่มีประสบการณ์สูง
+ให้วิเคราะห์ข้อมูลการเงินด้านล่าง และสรุปเป็น **รายงานภาษีและการเงินประจำเดือน** ภาษาไทย เป็นกันเอง ชัดเจน
 
 ---
-วิเคราะห์ใน 3-4 ประเด็นสั้นๆ:
-1. **สุขภาพกระแสเงินสด** — ดีหรือน่าเป็นห่วง?
-2. **สัดส่วนค่าใช้จ่าย** — หมวดไหนหนักเกินไปหรือน่าสังเกต?
-3. **รายรับ** — แหล่งรายได้ดูเป็นยังไง? มีความเสี่ยงไหม?
-4. **ข้อแนะนำ** — 1-2 อย่างที่ทำได้จริงเดือนนี้
+**ข้อมูลเดือน ${monthName} ${year + 543}**
 
-ห้ามยาวเกินไป ห้ามพูดสิ่งที่ไม่มีข้อมูล ใช้ภาษาไทยธรรมดา เป็นกันเอง ไม่ต้องทางการ`
+💰 รายรับ: ${thb(totalIncome)}
+💸 รายจ่าย: ${thb(totalExpense)} (รวมเงินเดือน ${thb(totalPayroll)})
+📊 กำไรสุทธิ: ${thb(netProfit)}
+🏦 เงินสดคงเหลือ (ยกมา + เดือนนี้): ${thb(currentBalance)}
+
+📈 รายรับแยกประเภท:
+${Object.entries(incomeBySource as Record<string, number>).sort(([,a],[,b]) => b - a).map(([k,v]) => `- ${k}: ${thb(v as number)}`).join('\n')}
+
+📦 รายจ่ายแยกหมวด:
+${Object.entries(expenseByCategory as Record<string, number>).sort(([,a],[,b]) => b - a).map(([k,v]) => `- ${k}: ${thb(v as number)}`).join('\n')}
+
+🏛️ WHT ที่หักจากการจ่าย freelance:
+- เดือนที่แล้ว (ต้องนำส่งเดือนนี้ วันที่ 7): ${prevMonthWHT > 0 ? thb(prevMonthWHT) + (prevWHTSubmitted ? ' ✅ นำส่งแล้ว' : ' ⚠️ ยังไม่ส่ง') : 'ไม่มี'}
+- เดือนนี้ (นำส่งเดือนหน้า วันที่ 7): ${currentMonthWHT > 0 ? thb(currentMonthWHT) : 'ไม่มี'}
+
+📅 รายได้สะสมตั้งแต่ต้นปี: ${thb(yearToDateIncome ?? 0)}
+💹 กำไรสะสมตั้งแต่ต้นปี: ${thb(yearToDateProfit ?? 0)}
+
+---
+กรุณาสรุปเป็นหัวข้อดังนี้ (ห้ามข้ามหัวข้อใด):
+
+## 🧮 ภาษีที่ต้องจ่ายเดือนนี้ (กำหนดส่ง)
+แสดงภาษีแต่ละประเภทที่เกี่ยวข้องกับข้อมูลนี้ พร้อมหลักการคิดและยอดประมาณ:
+
+1. **ภ.ง.ด.1** (ภาษีหัก ณ ที่จ่าย จากเงินเดือนพนักงาน) — ครบกำหนด 7 ${monthName === 'มิถุนายน' ? 'กรกฎาคม' : 'เดือนถัดไป'}
+   - หลักการ: หักจากเงินเดือนพนักงาน อัตราขึ้นกับรายได้รวมทั้งปี
+   - WHT จากระบบ payslip: ${thb(whtFromPayslips ?? 0)}
+
+2. **ภ.ง.ด.53** (WHT ค่าบริการ/freelance จากบริษัท) — ครบกำหนด 7 ${monthName === 'มิถุนายน' ? 'กรกฎาคม' : 'เดือนถัดไป'}
+   - หลักการ: หัก 3% จากค่าจ้างที่จ่ายให้นิติบุคคล/บุคคลธรรมดา
+   - ยอดจาก freelance payslip: ${thb(currentMonthWHT)}
+
+3. **ภ.พ.30** (ภาษีมูลค่าเพิ่ม VAT) — ครบกำหนด 15 ${monthName === 'มิถุนายน' ? 'กรกฎาคม' : 'เดือนถัดไป'}
+   - หลักการ: ภาษีขาย (Output VAT) = รายรับ × 7% หักด้วยภาษีซื้อ (Input VAT) จากค่าใช้จ่ายที่มีใบกำกับภาษี
+   - ประมาณ Output VAT: ${thb(totalIncome * 0.07)}
+   - *หมายเหตุ: ต้องหัก Input VAT จากใบกำกับภาษีที่ได้รับจริงด้วย
+
+4. **ภ.ง.ด.51** (ภาษีเงินได้นิติบุคคลครึ่งปี) — ยื่นภายใน 2 เดือนหลังสิ้นรอบ 6 เดือน
+   - หลักการ: SME อัตราภาษี 15% (กำไร 300K-3M) หรือ 20% (เกิน 3M) — ต้องประมาณกำไรทั้งปีก่อน
+   - กำไรสะสม YTD: ${thb(yearToDateProfit ?? 0)} — คาดการณ์ทั้งปีและเตรียมจ่ายล่วงหน้า
+
+## 💡 คำแนะนำจาก CFO
+ให้ 2-3 ข้อที่ practical และทำได้จริงสำหรับ SME ขนาดนี้ เช่น เรื่อง cash flow, tax planning, ค่าใช้จ่ายที่ลดหย่อนได้
+
+## ⚠️ สิ่งที่ต้องระวัง
+ประเด็นเร่งด่วนหรือความเสี่ยงที่เห็นจากข้อมูลนี้
+
+---
+ใช้ภาษาไทยธรรมดา เป็นกันเอง ไม่ทางการ ตรงประเด็น ห้ามพูดสิ่งที่ไม่มีข้อมูลรองรับ`
 
   const stream = await client.messages.stream({
     model: 'claude-opus-4-8',
-    max_tokens: 1024,
+    max_tokens: 2048,
     thinking: { type: 'adaptive' },
     messages: [{ role: 'user', content: prompt }],
   })

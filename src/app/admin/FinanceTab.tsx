@@ -461,6 +461,14 @@ export default function FinanceTab({ isReadOnly = false }: { isReadOnly?: boolea
         }
       }
 
+      // WHT from employee payslips (ภ.ง.ด.1)
+      const whtFromPayslips = payslips.reduce((s, p) => s + Number(p.withholding_tax), 0)
+      // Year-to-date totals
+      const yearToDateIncome = allIncomes.filter(r => r.year === year && r.month <= month).reduce((s, r) => s + Number(r.amount), 0)
+      const yearToDateExpense = allExpenses.filter(r => r.year === year && r.month <= month).reduce((s, r) => s + Number(r.amount), 0)
+        + allPayslips.filter(p => p.period_year === year && p.period_month <= month).reduce((s, p) => s + Number(p.net_pay), 0)
+      const yearToDateProfit = yearToDateIncome - yearToDateExpense
+
       const res = await fetch('/api/ai-analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -471,6 +479,7 @@ export default function FinanceTab({ isReadOnly = false }: { isReadOnly?: boolea
           carryBalance, currentBalance,
           prevMonthWHT, currentMonthWHT, prevWHTSubmitted,
           expenseByCategory, incomeBySource, totalPayroll,
+          whtFromPayslips, yearToDateIncome, yearToDateProfit,
         }),
       })
       if (!res.ok || !res.body) { setAiAnalysis('เกิดข้อผิดพลาด ลองใหม่อีกครั้ง'); setAiLoading(false); return }
@@ -830,6 +839,39 @@ export default function FinanceTab({ isReadOnly = false }: { isReadOnly?: boolea
               )}
             </div>
           )}
+
+          {/* AI Tax & Finance Summary */}
+          <div className="bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-200 rounded-xl p-3">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div>
+                <p className="text-xs font-semibold text-indigo-700">🧮 สรุปภาษีและการเงิน โดย AI CFO</p>
+                <p className="text-[10px] text-indigo-500 mt-0.5">วิเคราะห์ภาษีทุกประเภท (VAT, WHT, ภ.ง.ด.ต่างๆ) พร้อมคำแนะนำ</p>
+              </div>
+              <button
+                onClick={aiAnalysis && !aiLoading ? () => setAiOpen(o => !o) : runAiAnalysis}
+                disabled={aiLoading}
+                className="flex items-center gap-2 text-xs font-semibold px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-60 transition-colors shrink-0"
+              >
+                {aiLoading
+                  ? <><span className="animate-spin inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full" /> กำลังวิเคราะห์...</>
+                  : aiAnalysis
+                    ? (aiOpen ? '▲ ซ่อน' : '▼ ดูผล')
+                    : '🧮 วิเคราะห์เลย'}
+              </button>
+            </div>
+            {aiOpen && aiAnalysis && (
+              <div className="mt-3 pt-3 border-t border-indigo-200">
+                <div className="flex justify-end mb-1.5">
+                  <button onClick={runAiAnalysis} disabled={aiLoading} className="text-[10px] text-indigo-400 hover:text-indigo-600 underline disabled:opacity-50">
+                    วิเคราะห์ใหม่
+                  </button>
+                </div>
+                <div className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">
+                  {aiAnalysis}{aiLoading && <span className="animate-pulse text-indigo-400">▌</span>}
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* Duplicate expense warning */}
           {dupWarning && (
