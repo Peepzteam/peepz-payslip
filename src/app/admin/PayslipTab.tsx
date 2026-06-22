@@ -443,7 +443,7 @@ export default function PayslipTab({ isReadOnly = false, incomingPayslipId, inco
       other_deduction: p.other_deduction.toString(),
       other_deduction_note: p.other_deduction_note || '',
       admin_note: p.admin_note || '',
-      transfer_date: p.transfer_date || '',
+      transfer_date: p.is_paid ? (p.transfer_date || '') : '',
       due_date: p.due_date || '',
       document_url: p.document_url || '',
       payment_doc_url: p.payment_doc_url || '',
