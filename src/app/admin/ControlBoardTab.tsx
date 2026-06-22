@@ -948,59 +948,95 @@ export default function ControlBoardTab() {
         if (activeServices.length === 0) return null
         const monthlyTotals = m12.map((_,i) => activeServices.reduce((s,sv) => s + sv.revenueArr[i], 0))
         const maxVal = Math.max(...monthlyTotals, 1)
+        const CHART_H = 280
+        const Y_LABELS = 5
+        const fmtM = (v: number) => v >= 1_000_000 ? `${(v/1_000_000).toFixed(1)}M` : v >= 1000 ? `${(v/1000).toFixed(0)}K` : `${v}`
         return (
-          <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
-            <h3 className="text-sm font-bold text-gray-700 mb-1">📊 รายได้ Services รายเดือน</h3>
-            <p className="text-xs text-gray-400 mb-4">แยกตามประเภทงาน (stacked bar)</p>
-
-            {/* Legend */}
-            <div className="flex flex-wrap gap-3 mb-4">
-              {activeServices.map(s => (
-                <div key={s.val} className="flex items-center gap-1.5">
-                  <span className="w-3 h-3 rounded-sm inline-block flex-shrink-0" style={{backgroundColor: s.bar}}/>
-                  <span className="text-xs text-gray-600">{s.label}</span>
-                </div>
-              ))}
-            </div>
-
-            {/* Stacked Bar Chart */}
-            <div className="flex items-end gap-1.5" style={{height: 160}}>
-              {m12.map((_,i) => {
-                const total = monthlyTotals[i]
-                const heightPct = total > 0 ? (total / maxVal) * 100 : 0
-                return (
-                  <div key={i} className="flex-1 flex flex-col justify-end items-center gap-0.5 group relative">
-                    {/* Tooltip */}
-                    {total > 0 && (
-                      <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 hidden group-hover:block z-10 bg-gray-800 text-white text-[10px] rounded px-2 py-1 whitespace-nowrap shadow-lg">
-                        {MONTHS_SHORT[i]}<br/>
-                        {activeServices.filter(s=>s.revenueArr[i]>0).map(s=>(
-                          <div key={s.val}>{s.label.split(' ').slice(1).join(' ')}: {formatCurrency(s.revenueArr[i])}</div>
-                        ))}
-                        <div className="font-bold border-t border-gray-600 mt-0.5 pt-0.5">รวม: {formatCurrency(total)}</div>
-                      </div>
-                    )}
-                    {/* Stacked segments */}
-                    <div className="w-full rounded-t overflow-hidden" style={{height: `${heightPct}%`, minHeight: total > 0 ? 4 : 0, display: 'flex', flexDirection: 'column-reverse'}}>
-                      {activeServices.map(s => {
-                        const segPct = total > 0 ? (s.revenueArr[i] / total) * 100 : 0
-                        if (segPct === 0) return null
-                        return <div key={s.val} style={{height: `${segPct}%`, backgroundColor: s.bar, minHeight: 2}}/>
-                      })}
-                    </div>
-                    <span className="text-[9px] text-gray-400 mt-1">{MONTHS_SHORT[i]}</span>
+          <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
+            <div className="flex items-start justify-between mb-4 flex-wrap gap-2">
+              <div>
+                <h3 className="text-sm font-bold text-gray-800">📊 รายได้ Services รายเดือน {year + 543}</h3>
+                <p className="text-xs text-gray-400 mt-0.5">แยกตามประเภทงาน — hover ดูรายละเอียด</p>
+              </div>
+              {/* Legend */}
+              <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+                {activeServices.map(s => (
+                  <div key={s.val} className="flex items-center gap-1.5">
+                    <span className="w-3 h-3 rounded inline-block flex-shrink-0" style={{backgroundColor: s.bar}}/>
+                    <span className="text-xs text-gray-600">{s.label}</span>
                   </div>
-                )
-              })}
+                ))}
+              </div>
             </div>
 
-            {/* Count summary */}
-            <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {/* Chart area */}
+            <div className="flex gap-2">
+              {/* Y-axis */}
+              <div className="flex flex-col justify-between items-end pb-6" style={{height: CHART_H, minWidth: 48}}>
+                {Array.from({length: Y_LABELS + 1}, (_,i) => {
+                  const v = maxVal * (Y_LABELS - i) / Y_LABELS
+                  return <span key={i} className="text-[10px] text-gray-400 leading-none">{fmtM(v)}</span>
+                })}
+              </div>
+
+              {/* Bars + gridlines */}
+              <div className="flex-1 relative">
+                {/* Gridlines */}
+                <div className="absolute inset-0 pb-6 flex flex-col justify-between pointer-events-none">
+                  {Array.from({length: Y_LABELS + 1}, (_,i) => (
+                    <div key={i} className="border-t border-gray-100 w-full"/>
+                  ))}
+                </div>
+
+                {/* Bars */}
+                <div className="flex items-end gap-2 pb-6" style={{height: CHART_H}}>
+                  {m12.map((_,i) => {
+                    const total = monthlyTotals[i]
+                    const heightPct = (total / maxVal) * 100
+                    return (
+                      <div key={i} className="flex-1 flex flex-col justify-end items-center group relative" style={{height: '100%'}}>
+                        {/* Tooltip */}
+                        {total > 0 && (
+                          <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 hidden group-hover:block z-20 bg-gray-900 text-white text-[11px] rounded-lg px-3 py-2 whitespace-nowrap shadow-xl">
+                            <p className="font-bold text-white mb-1">{MONTHS_SHORT[i]} — {formatCurrency(total)}</p>
+                            {activeServices.filter(s=>s.revenueArr[i]>0).map(s=>(
+                              <div key={s.val} className="flex items-center gap-1.5 mb-0.5">
+                                <span className="w-2 h-2 rounded-sm inline-block" style={{backgroundColor:s.bar}}/>
+                                <span className="text-gray-300">{s.label.replace(/^[^\s]+ /,'')}: </span>
+                                <span className="font-semibold">{formatCurrency(s.revenueArr[i])}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {/* Value on top of bar */}
+                        {total > 0 && (
+                          <span className="text-[9px] text-gray-500 mb-0.5 font-medium">{fmtM(total)}</span>
+                        )}
+                        {/* Stacked bar */}
+                        <div className="w-full rounded-t-md overflow-hidden flex flex-col-reverse" style={{height: `${heightPct}%`, minHeight: total > 0 ? 4 : 0}}>
+                          {activeServices.map(s => {
+                            const segPct = total > 0 ? (s.revenueArr[i] / total) * 100 : 0
+                            if (segPct === 0) return null
+                            return <div key={s.val} style={{height:`${segPct}%`, backgroundColor:s.bar, minHeight: 3}}/>
+                          })}
+                        </div>
+                        {/* Month label */}
+                        <span className="text-[10px] text-gray-500 mt-1.5 font-medium">{MONTHS_SHORT[i]}</span>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
+
+            {/* Summary cards */}
+            <div className="mt-5 grid grid-cols-2 sm:grid-cols-4 gap-2">
               {activeServices.map(s => (
-                <div key={s.val} className={`rounded-lg p-2 border ${s.bg} ${s.border}`}>
-                  <p className={`text-[10px] font-medium ${s.color}`}>{s.label}</p>
-                  <p className={`text-sm font-bold ${s.color}`}>{formatCurrency(sum(s.revenueArr))}</p>
-                  <p className="text-[10px] text-gray-400">{sum(s.countArr)} งาน</p>
+                <div key={s.val} className={`rounded-xl p-3 border ${s.bg} ${s.border}`}>
+                  <p className={`text-[11px] font-semibold ${s.color} mb-1`}>{s.label}</p>
+                  <p className={`text-base font-bold ${s.color}`}>{formatCurrency(sum(s.revenueArr))}</p>
+                  <p className="text-[11px] text-gray-400 mt-0.5">{sum(s.countArr)} งาน /{' '}
+                    {Math.round(sum(s.countArr) > 0 ? sum(s.revenueArr)/sum(s.countArr) : 0).toLocaleString()} บ./งาน</p>
                 </div>
               ))}
             </div>
