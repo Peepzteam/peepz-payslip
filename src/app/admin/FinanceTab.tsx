@@ -855,31 +855,59 @@ export default function FinanceTab({ isReadOnly = false }: { isReadOnly?: boolea
           )}
 
           {/* AI Tax & Finance Summary — auto-updated 1st, 15th, last day of month */}
-          {aiAnalysis ? (
-            <div className="bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-200 rounded-xl p-3">
-              <div className="flex items-center justify-between gap-2 flex-wrap">
-                <div>
-                  <p className="text-xs font-semibold text-indigo-700">🧮 สรุปภาษีและการเงิน โดย AI CFO</p>
-                  {aiUpdatedAt && (
-                    <p className="text-[10px] text-indigo-400 mt-0.5">
-                      อัปเดตล่าสุด: {new Date(aiUpdatedAt).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                    </p>
-                  )}
-                </div>
-                <button
-                  onClick={() => setAiOpen(o => !o)}
-                  className="text-xs font-medium px-3 py-1.5 rounded-lg border border-indigo-300 text-indigo-600 hover:bg-indigo-100 transition-colors shrink-0"
-                >
-                  {aiOpen ? '▲ ซ่อน' : '▼ ดูรายละเอียด'}
-                </button>
+          <div className="bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-200 rounded-xl p-3">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div>
+                <p className="text-xs font-semibold text-indigo-700">🧮 สรุปภาษีและการเงิน โดย AI CFO</p>
+                {aiUpdatedAt ? (
+                  <p className="text-[10px] text-indigo-400 mt-0.5">
+                    อัปเดตล่าสุด: {new Date(aiUpdatedAt).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                    {' · '}อัปเดตอัตโนมัติ 1, 15, สิ้นเดือน
+                  </p>
+                ) : (
+                  <p className="text-[10px] text-indigo-400 mt-0.5">อัปเดตอัตโนมัติ 1, 15, สิ้นเดือน</p>
+                )}
               </div>
-              {aiOpen && (
-                <div className="mt-3 pt-3 border-t border-indigo-200">
-                  <div className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{aiAnalysis}</div>
-                </div>
-              )}
+              <div className="flex items-center gap-2 shrink-0">
+                {!aiAnalysis && !aiLoading && (
+                  <button
+                    onClick={async () => {
+                      setAiLoading(true)
+                      try {
+                        const res = await fetch('/api/ai-analysis-cache', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ month, year, triggerType: 'manual' }),
+                        })
+                        const d = await res.json()
+                        if (d.analysis) { setAiAnalysis(d.analysis); setAiUpdatedAt(new Date().toISOString()); setAiOpen(true) }
+                      } catch { /* ignore */ } finally { setAiLoading(false) }
+                    }}
+                    className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
+                  >
+                    🧮 สร้างรายงาน
+                  </button>
+                )}
+                {aiLoading && (
+                  <div className="flex items-center gap-1.5 text-xs text-indigo-600">
+                    <span className="animate-spin w-3 h-3 border-2 border-indigo-400 border-t-transparent rounded-full inline-block" />
+                    กำลังวิเคราะห์...
+                  </div>
+                )}
+                {aiAnalysis && !aiLoading && (
+                  <button onClick={() => setAiOpen(o => !o)}
+                    className="text-xs font-medium px-3 py-1.5 rounded-lg border border-indigo-300 text-indigo-600 hover:bg-indigo-100 transition-colors">
+                    {aiOpen ? '▲ ซ่อน' : '▼ ดูรายละเอียด'}
+                  </button>
+                )}
+              </div>
             </div>
-          ) : null}
+            {aiOpen && aiAnalysis && (
+              <div className="mt-3 pt-3 border-t border-indigo-200">
+                <div className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{aiAnalysis}</div>
+              </div>
+            )}
+          </div>
 
           {/* Duplicate expense warning */}
           {dupWarning && (
