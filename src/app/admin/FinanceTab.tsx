@@ -177,6 +177,7 @@ export default function FinanceTab({ isReadOnly = false }: { isReadOnly?: boolea
   const [bankImportOpen, setBankImportOpen] = useState(false)
   const [bankImportText, setBankImportText] = useState('')
   const [aiAnalysis, setAiAnalysis] = useState<string>('')
+  const [aiUpdatedAt, setAiUpdatedAt] = useState<string | null>(null)
   const [aiLoading, setAiLoading] = useState(false)
   const [aiOpen, setAiOpen] = useState(false)
   const [bankImportRows, setBankImportRows] = useState<{ txn: BankTxn; matches: LedgerRow[] }[]>([])
@@ -218,6 +219,19 @@ export default function FinanceTab({ isReadOnly = false }: { isReadOnly?: boolea
   }, [month, year])
 
   useEffect(() => { load() }, [load])
+
+  // Load cached AI analysis for this month/year
+  useEffect(() => {
+    setAiAnalysis('')
+    setAiUpdatedAt(null)
+    setAiOpen(false)
+    fetch(`/api/ai-analysis-cache?month=${month}&year=${year}`)
+      .then(r => r.json())
+      .then(d => {
+        if (d?.analysis) { setAiAnalysis(d.analysis); setAiUpdatedAt(d.updated_at) }
+      })
+      .catch(() => {})
+  }, [month, year])
 
   const totalIncome = incomes.reduce((s, r) => s + Number(r.amount), 0)
   const totalExpenseManual = expenses.reduce((s, r) => s + Number(r.amount), 0)
@@ -840,38 +854,32 @@ export default function FinanceTab({ isReadOnly = false }: { isReadOnly?: boolea
             </div>
           )}
 
-          {/* AI Tax & Finance Summary */}
-          <div className="bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-200 rounded-xl p-3">
-            <div className="flex items-center justify-between gap-2 flex-wrap">
-              <div>
-                <p className="text-xs font-semibold text-indigo-700">🧮 สรุปภาษีและการเงิน โดย AI CFO</p>
-                <p className="text-[10px] text-indigo-500 mt-0.5">วิเคราะห์ภาษีทุกประเภท (VAT, WHT, ภ.ง.ด.ต่างๆ) พร้อมคำแนะนำ</p>
+          {/* AI Tax & Finance Summary — auto-updated 1st, 15th, last day of month */}
+          {aiAnalysis ? (
+            <div className="bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-200 rounded-xl p-3">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div>
+                  <p className="text-xs font-semibold text-indigo-700">🧮 สรุปภาษีและการเงิน โดย AI CFO</p>
+                  {aiUpdatedAt && (
+                    <p className="text-[10px] text-indigo-400 mt-0.5">
+                      อัปเดตล่าสุด: {new Date(aiUpdatedAt).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                    </p>
+                  )}
+                </div>
+                <button
+                  onClick={() => setAiOpen(o => !o)}
+                  className="text-xs font-medium px-3 py-1.5 rounded-lg border border-indigo-300 text-indigo-600 hover:bg-indigo-100 transition-colors shrink-0"
+                >
+                  {aiOpen ? '▲ ซ่อน' : '▼ ดูรายละเอียด'}
+                </button>
               </div>
-              <button
-                onClick={aiAnalysis && !aiLoading ? () => setAiOpen(o => !o) : runAiAnalysis}
-                disabled={aiLoading}
-                className="flex items-center gap-2 text-xs font-semibold px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-60 transition-colors shrink-0"
-              >
-                {aiLoading
-                  ? <><span className="animate-spin inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full" /> กำลังวิเคราะห์...</>
-                  : aiAnalysis
-                    ? (aiOpen ? '▲ ซ่อน' : '▼ ดูผล')
-                    : '🧮 วิเคราะห์เลย'}
-              </button>
+              {aiOpen && (
+                <div className="mt-3 pt-3 border-t border-indigo-200">
+                  <div className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{aiAnalysis}</div>
+                </div>
+              )}
             </div>
-            {aiOpen && aiAnalysis && (
-              <div className="mt-3 pt-3 border-t border-indigo-200">
-                <div className="flex justify-end mb-1.5">
-                  <button onClick={runAiAnalysis} disabled={aiLoading} className="text-[10px] text-indigo-400 hover:text-indigo-600 underline disabled:opacity-50">
-                    วิเคราะห์ใหม่
-                  </button>
-                </div>
-                <div className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">
-                  {aiAnalysis}{aiLoading && <span className="animate-pulse text-indigo-400">▌</span>}
-                </div>
-              </div>
-            )}
-          </div>
+          ) : null}
 
           {/* Duplicate expense warning */}
           {dupWarning && (
