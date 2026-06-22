@@ -104,23 +104,6 @@ async function fetchFinancialData(month: number, year: number, siteUrl: string) 
   }
 }
 
-async function buildAndSaveAnalysis(month: number, year: number, data: ReturnType<typeof buildPrompt>[1], triggerType: string) {
-  const prompt = buildPrompt(month, year, data)
-  const message = await client.messages.create({
-    model: 'claude-opus-4-8',
-    max_tokens: 2048,
-    thinking: { type: 'adaptive' },
-    messages: [{ role: 'user', content: prompt }],
-  })
-  const analysis = message.content
-    .filter(b => b.type === 'text')
-    .map(b => (b as { type: 'text'; text: string }).text)
-    .join('')
-  await supabaseAdmin
-    .from('ai_analysis_cache')
-    .upsert({ month, year, analysis, updated_at: new Date().toISOString(), trigger_type: triggerType }, { onConflict: 'month,year' })
-  return analysis
-}
 
 function buildPrompt(month: number, year: number, d: {
   totalIncome: number; totalExpense: number; netProfit: number
