@@ -839,16 +839,13 @@ export default function FinanceTab({ isReadOnly = false }: { isReadOnly?: boolea
           {(prevMonthWHT > 0 || currentMonthWHT > 0) && (
             <div className="flex flex-wrap gap-2">
               {prevMonthWHT > 0 && (
-                <div className={`flex items-center gap-2 rounded-full px-3 py-1.5 text-xs border ${prevWHTSubmitted ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
-                  {prevWHTSubmitted
-                    ? <><ShieldCheck size={12} /> WHT {MONTHS[prevMonth-1]} {formatCurrency(prevMonthWHT)} — นำส่งแล้ว</>
-                    : <><AlertTriangle size={12} /> WHT {MONTHS[prevMonth-1]} {formatCurrency(prevMonthWHT)} — ยังไม่ส่ง (ครบ 7 {MONTH_FULL[month-1]})</>
-                  }
+                <div className="flex items-center gap-2 rounded-full px-3 py-1.5 text-xs border bg-orange-50 border-orange-200 text-orange-700">
+                  <ShieldCheck size={12} /> WHT {MONTHS[prevMonth-1]} {formatCurrency(prevMonthWHT)} — ครบกำหนด 15 {MONTH_FULL[month-1]}
                 </div>
               )}
               {currentMonthWHT > 0 && (
                 <div className="flex items-center gap-2 rounded-full px-3 py-1.5 text-xs border bg-amber-50 border-amber-200 text-amber-700">
-                  🏛️ WHT {MONTHS[month-1]} {formatCurrency(currentMonthWHT)} — ส่งเดือนหน้า (7 {MONTH_FULL[nextMonth-1]})
+                  🏛️ WHT {MONTHS[month-1]} {formatCurrency(currentMonthWHT)} — ส่งเดือนหน้า (15 {MONTH_FULL[nextMonth-1]})
                 </div>
               )}
             </div>
