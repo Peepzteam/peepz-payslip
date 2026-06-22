@@ -831,32 +831,6 @@ export default function FinanceTab({ isReadOnly = false }: { isReadOnly?: boolea
             </div>
           )}
 
-          {/* AI Financial Analysis */}
-          <div>
-            <button
-              onClick={aiAnalysis && !aiLoading ? () => setAiOpen(o => !o) : runAiAnalysis}
-              disabled={aiLoading}
-              className="flex items-center gap-2 text-xs font-medium px-3 py-1.5 rounded-full border border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 disabled:opacity-60 transition-colors"
-            >
-              {aiLoading ? (
-                <><span className="animate-spin inline-block w-3 h-3 border border-indigo-400 border-t-transparent rounded-full" /> กำลังวิเคราะห์...</>
-              ) : aiAnalysis ? (
-                aiOpen ? '▲ ซ่อนผลวิเคราะห์' : '▼ ดูผลวิเคราะห์'
-              ) : (
-                '🤖 วิเคราะห์การเงิน AI'
-              )}
-            </button>
-            {aiOpen && aiAnalysis && (
-              <div className="mt-2 bg-indigo-50 border border-indigo-200 rounded-xl p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-xs font-semibold text-indigo-700">🤖 AI วิเคราะห์การเงิน — {MONTH_FULL[month-1]} {year + 543}</p>
-                  <button onClick={runAiAnalysis} disabled={aiLoading} className="text-[10px] text-indigo-500 hover:text-indigo-700 underline disabled:opacity-50">วิเคราะห์ใหม่</button>
-                </div>
-                <div className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{aiAnalysis}{aiLoading && <span className="animate-pulse">▌</span>}</div>
-              </div>
-            )}
-          </div>
-
           {/* Duplicate expense warning */}
           {dupWarning && (
             <div className="bg-yellow-50 border border-yellow-300 rounded-xl p-4">
