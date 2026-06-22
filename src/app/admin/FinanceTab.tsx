@@ -1518,6 +1518,140 @@ function ExpenseFormFields({ form, setForm }: {
   )
 }
 
+// ─── Year Charts ──────────────────────────────────────────────────────────────
+const INC_COLORS: Record<string, string> = {
+  live: '#f97316', influencer: '#a855f7', content: '#3b82f6',
+  ads: '#eab308', seeding: '#22c55e', event: '#ec4899', other: '#9ca3af',
+}
+const EXP_COLORS: Record<string, string> = {
+  Office: '#0891b2', Team: '#f472b6', Marketing: '#f97316',
+  HR: '#6366f1', Tax: '#ef4444', Other: '#9ca3af',
+}
+
+function DonutChart({ slices, size = 130 }: {
+  slices: { label: string; value: number; color: string }[]
+  size?: number
+}) {
+  const total = slices.reduce((s, x) => s + x.value, 0)
+  if (total === 0) return <div className="text-xs text-gray-400 text-center py-8">ไม่มีข้อมูล</div>
+  const cx = size / 2, cy = size / 2, r = size * 0.40, ir = size * 0.24
+  let angle = -Math.PI / 2
+  const paths = slices.map(sl => {
+    const a = (sl.value / total) * 2 * Math.PI
+    const sa = angle, ea = angle + a
+    angle = ea
+    const large = a > Math.PI ? 1 : 0
+    const x1 = cx + r * Math.cos(sa), y1 = cy + r * Math.sin(sa)
+    const x2 = cx + r * Math.cos(ea), y2 = cy + r * Math.sin(ea)
+    const ix1 = cx + ir * Math.cos(sa), iy1 = cy + ir * Math.sin(sa)
+    const ix2 = cx + ir * Math.cos(ea), iy2 = cy + ir * Math.sin(ea)
+    return { d: `M${x1} ${y1} A${r} ${r} 0 ${large} 1 ${x2} ${y2} L${ix2} ${iy2} A${ir} ${ir} 0 ${large} 0 ${ix1} ${iy1}Z`, color: sl.color, pct: Math.round(sl.value / total * 100), label: sl.label }
+  })
+  return (
+    <svg viewBox={`0 0 ${size} ${size}`} width={size} height={size} className="shrink-0">
+      {paths.map((p, i) => <path key={i} d={p.d} fill={p.color} stroke="white" strokeWidth={1.5} />)}
+    </svg>
+  )
+}
+
+function YearCharts({ data, incBySource, expByCat, totalPayrollYear }: {
+  data: { month: number; inc: number; exp: number; net: number }[]
+  incBySource: { val: string; label: string; total: number }[]
+  expByCat: { val: string; label: string; group: string; total: number }[]
+  totalPayrollYear: number
+}) {
+  const maxVal = Math.max(...data.map(d => Math.max(d.inc, d.exp)), 1)
+
+  // Income donut slices
+  const incSlices = incBySource.map(s => ({ label: s.label, value: s.total, color: INC_COLORS[s.val] ?? '#9ca3af' }))
+
+  // Expense donut slices — group by category group + payroll
+  const expGroupMap: Record<string, number> = {}
+  for (const cat of expByCat) {
+    const g = cat.group ?? 'Other'
+    expGroupMap[g] = (expGroupMap[g] ?? 0) + cat.total
+  }
+  if (totalPayrollYear > 0) expGroupMap['HR'] = (expGroupMap['HR'] ?? 0) + totalPayrollYear
+  const expSlices = Object.entries(expGroupMap).sort(([,a],[,b]) => b - a)
+    .map(([g, v]) => ({ label: g === 'Office' ? '🏢 Office' : g === 'Team' ? '🎉 Team' : g === 'Marketing' ? '📢 Marketing' : g === 'HR' ? '👥 HR/เงินเดือน' : g === 'Tax' ? '🏛️ ภาษี' : '📦 อื่นๆ', value: v, color: EXP_COLORS[g] ?? '#9ca3af' }))
+
+  const fmt = (v: number) => v >= 1e6 ? `${(v/1e6).toFixed(1)}M` : v >= 1e3 ? `${(v/1e3).toFixed(0)}K` : String(v)
+
+  return (
+    <div className="space-y-3">
+      {/* Bar chart — monthly income vs expense */}
+      <div className="bg-white rounded-xl border border-gray-100 p-4">
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-xs font-semibold text-gray-600">รายรับ vs รายจ่าย รายเดือน</p>
+          <div className="flex items-center gap-3 text-[10px] text-gray-500">
+            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-emerald-400 inline-block" /> รายรับ</span>
+            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-rose-400 inline-block" /> รายจ่าย</span>
+          </div>
+        </div>
+        <div className="flex items-end gap-1" style={{ height: 120 }}>
+          {data.map((d, i) => (
+            <div key={i} className="flex-1 flex flex-col items-center gap-0.5 min-w-0">
+              <div className="w-full flex gap-[2px] items-end" style={{ height: 100 }}>
+                <div className="flex-1 bg-emerald-400 rounded-t-sm min-h-[1px] transition-all"
+                  style={{ height: `${Math.max((d.inc / maxVal) * 100, d.inc > 0 ? 1 : 0)}%` }} />
+                <div className="flex-1 bg-rose-400 rounded-t-sm min-h-[1px] transition-all"
+                  style={{ height: `${Math.max((d.exp / maxVal) * 100, d.exp > 0 ? 1 : 0)}%` }} />
+              </div>
+              <span className="text-[8px] text-gray-400 truncate w-full text-center">{MONTHS[i]}</span>
+            </div>
+          ))}
+        </div>
+        {/* Net profit line indicators */}
+        <div className="flex gap-1 mt-2">
+          {data.map((d, i) => (
+            <div key={i} className="flex-1 min-w-0">
+              <div className={`h-0.5 rounded-full ${d.net > 0 ? 'bg-indigo-400' : d.net < 0 ? 'bg-red-400' : 'bg-gray-200'}`} />
+            </div>
+          ))}
+        </div>
+        <p className="text-[9px] text-gray-400 mt-1">— สีม่วง = กำไร / สีแดง = ขาดทุน</p>
+      </div>
+
+      {/* Pie charts */}
+      <div className="grid grid-cols-2 gap-3">
+        {/* Income by source */}
+        <div className="bg-white rounded-xl border border-gray-100 p-4">
+          <p className="text-xs font-semibold text-gray-600 mb-3">รายรับแยกประเภท</p>
+          <div className="flex gap-3 items-start">
+            <DonutChart slices={incSlices} size={110} />
+            <div className="flex flex-col gap-1.5 flex-1 min-w-0">
+              {incSlices.map((s, i) => (
+                <div key={i} className="flex items-center gap-1.5 min-w-0">
+                  <span className="w-2 h-2 rounded-full shrink-0" style={{ background: s.color }} />
+                  <span className="text-[10px] text-gray-600 truncate flex-1">{s.label}</span>
+                  <span className="text-[10px] font-semibold text-gray-700 shrink-0">{fmt(s.value)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Expense by group */}
+        <div className="bg-white rounded-xl border border-gray-100 p-4">
+          <p className="text-xs font-semibold text-gray-600 mb-3">รายจ่ายแยกหมวด</p>
+          <div className="flex gap-3 items-start">
+            <DonutChart slices={expSlices} size={110} />
+            <div className="flex flex-col gap-1.5 flex-1 min-w-0">
+              {expSlices.map((s, i) => (
+                <div key={i} className="flex items-center gap-1.5 min-w-0">
+                  <span className="w-2 h-2 rounded-full shrink-0" style={{ background: s.color }} />
+                  <span className="text-[10px] text-gray-600 truncate flex-1">{s.label}</span>
+                  <span className="text-[10px] font-semibold text-gray-700 shrink-0">{fmt(s.value)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Yearly P&L View ─────────────────────────────────────────────────────────
 function YearView({ data, year, yearTotal, allIncomes, allExpenses, allPayslips, setYear, onClickMonth }: {
   data: { month: number; inc: number; exp: number; payroll: number; net: number }[]
@@ -1589,6 +1723,9 @@ function YearView({ data, year, yearTotal, allIncomes, allExpenses, allPayslips,
           <p className={`text-2xl font-bold ${yearTotal.inc-yearTotal.exp >= 0 ? 'text-indigo-600' : 'text-red-500'}`}>{formatCurrency(yearTotal.inc-yearTotal.exp)}</p>
         </div>
       </div>
+
+      {/* Charts */}
+      <YearCharts data={data} incBySource={incBySource} expByCat={expByCat} totalPayrollYear={totalPayrollYear} />
 
       {/* P&L Table */}
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-auto">
