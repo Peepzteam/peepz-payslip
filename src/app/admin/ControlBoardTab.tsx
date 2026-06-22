@@ -432,6 +432,55 @@ export default function ControlBoardTab() {
 
   const sum = (arr: number[]) => arr.reduce((s,v)=>s+v,0)
 
+  function exportCSV() {
+    const rows: string[][] = []
+    const header = ['หัวข้อ', ...MONTHS_SHORT, 'รวม']
+    rows.push(header)
+
+    const addRow = (label: string, arr: number[]) =>
+      rows.push([label, ...arr.map(v => v !== 0 ? v.toFixed(2) : ''), sum(arr).toFixed(2)])
+    const addBlank = () => rows.push([])
+
+    rows.push(['=== รายรับ ==='])
+    addRow('รายรับ (Finance)', kbizIncArr)
+    addBlank()
+
+    rows.push(['=== รายจ่าย ==='])
+    addRow('เงินเดือนพนักงาน (payroll)', totalPayrollArr)
+    addRow('รายจ่ายอื่นๆ', m12.map((_,i) => financeExpAll(i+1)))
+    addRow('รายจ่ายรวม', totalExpArr)
+    addBlank()
+
+    rows.push(['=== KBIZ Balance ==='])
+    addRow('ยอดยกมา', kbizCarryArr)
+    addRow('ยอดคงเหลือ', kbizBalArr)
+    addBlank()
+
+    rows.push(['=== Services ที่ขายออก ==='])
+    for (const s of serviceRows) {
+      if (sum(s.revenueArr) === 0) continue
+      addRow(`${s.label} — จำนวนงาน`, s.countArr)
+      addRow(`${s.label} — รายได้`, s.revenueArr)
+    }
+    addBlank()
+
+    rows.push(['=== แคมเปญ ==='])
+    rows.push(['ชื่อแคมเปญ', 'ประเภท', 'ลูกค้า', 'รายรับ', 'ต้นทุน', 'กำไร'])
+    for (const c of campaigns) {
+      rows.push([c.campaign_name ?? '', c.service_type, c.client_name ?? '', c.revenue.toFixed(2), c.cost.toFixed(2), (c.revenue - c.cost).toFixed(2)])
+    }
+
+    const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n')
+    const bom = '﻿'
+    const blob = new Blob([bom + csv], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `control-board-${year + 543}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   if (loading) return <p className="text-center text-gray-400 py-12">กำลังโหลด...</p>
 
   return (
@@ -457,6 +506,10 @@ export default function ControlBoardTab() {
               📊 วิเคราะห์
             </button>
           </div>
+          <button onClick={exportCSV}
+            className="flex items-center gap-1.5 bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-emerald-700">
+            ⬇️ Export CSV
+          </button>
           <button onClick={()=>setShowCampForm(true)}
             className="flex items-center gap-1.5 bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-indigo-700">
             <Plus size={13}/> เพิ่มแคมเปญ
