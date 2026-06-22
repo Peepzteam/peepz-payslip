@@ -15,6 +15,8 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const body = await req.json()
+  const username = req.cookies.get('admin_username')?.value ?? null
+  if (username) body.created_by = username
   const { data, error } = await supabaseAdmin.from('expense_records').insert(body).select().single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json(data, { status: 201 })

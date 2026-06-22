@@ -2,7 +2,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { Employee, Payslip, LineItem, OtItem, IncentiveItem } from '@/types'
 import { formatCurrency, formatPeriod } from '@/lib/utils'
-import { Send, Upload, Plus, Download, Pencil, Trash2, Eye, X, Banknote } from 'lucide-react'
+import { Send, Upload, Plus, Download, Pencil, Trash2, Eye, X, Banknote, CheckSquare, Square, Wallet, Receipt, PartyPopper, UserPlus, Copy, Loader2, Check } from 'lucide-react'
 import { calculateTax, calcSocialSecurity } from '@/lib/tax'
 import PayslipCard from '@/components/PayslipCard'
 
@@ -18,19 +18,24 @@ function calcHours(start: string, end: string): number {
   if (!start || !end) return 0
   const [sh, sm] = start.split(':').map(Number)
   const [eh, em] = end.split(':').map(Number)
-  const diff = (eh * 60 + em) - (sh * 60 + sm)
-  return diff > 0 ? Math.round(diff / 60 * 100) / 100 : 0
+  let diff = (eh * 60 + em) - (sh * 60 + sm)
+  if (diff <= 0) diff += 24 * 60 // ข้ามเที่ยงคืน เช่น 18:00 → 00:00
+  return Math.round(diff / 60 * 100) / 100
 }
 
-export default function PayslipTab() {
+export default function PayslipTab({ isReadOnly = false, incomingPayslipId, incomingMonth }: { isReadOnly?: boolean; incomingPayslipId?: string; incomingMonth?: string }) {
   const [employees, setEmployees] = useState<Employee[]>([])
   const [payslips, setPayslips] = useState<Payslip[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [sending, setSending] = useState<string | null>(null)
+  const [sentFlash, setSentFlash] = useState<string | null>(null)
+  const [confirmFlash, setConfirmFlash] = useState<string | null>(null)
   const [importing, setImporting] = useState(false)
   const [importResult, setImportResult] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
+  const formRef = useRef<HTMLFormElement>(null)
+  const lastEditedId = useRef<string | null>(null)
 
   const [filterMonth, setFilterMonth] = useState(CURRENT_MONTH)
   const [filterYear, setFilterYear] = useState(CURRENT_YEAR)
@@ -59,9 +64,22 @@ export default function PayslipTab() {
     admin_note: '',
     transfer_date: '',
     due_date: '',
+    document_url: '',
+    payment_doc_url: '',
+    wht_cert_email: '',
+    freelance_confirm_id_card_url: '',
+    freelance_confirm_bank_book_url: '',
     send_email: true,
   })
   const [confirmingSend, setConfirmingSend] = useState<string | null>(null)
+  const [subTab, setSubTab] = useState<'list' | 'batch'>('list')
+  const [batchSelected, setBatchSelected] = useState<Set<string>>(new Set())
+  const [batchDocLinks, setBatchDocLinks] = useState<Record<string, string>>({})
+  const [batchPaying, setBatchPaying] = useState(false)
+  const [freelanceFilter, setFreelanceFilter] = useState<'all' | 'unpaid' | 'paid'>('unpaid')
+  const [expandedFreelance, setExpandedFreelance] = useState<Set<string>>(new Set())
+  const [highlightId, setHighlightId] = useState<string | null>(null)
+  const highlightRef = useRef<HTMLDivElement>(null)
 
   const selectedEmployee = employees.find((e) => e.id === form.employee_id)
   const isFreelance = guestMode ? guestType === 'freelance' : selectedEmployee?.type === 'freelance'
@@ -107,22 +125,54 @@ export default function PayslipTab() {
   // - เจ้าของ: 3% ของ เงินเดือน+incentive (ค่าบริการกรรมการ)
   // - พนักงานประจำ: 3% ของ incentive เท่านั้น (เงินเดือน+OT พนักงานยื่นภาษีเองปลายปี)
   useEffect(() => {
-    if (editingPayslip) return
     let wht = 0
     if (isFreelance) {
-      wht = Math.round(lineItemsTotal * 0.03)
+      wht = Math.round(lineItemsTotal * 0.03 * 100) / 100
     } else if (isOwner) {
-      wht = Math.round(incentiveTotal * 0.03)
+      wht = Math.round(incentiveTotal * 0.03 * 100) / 100
     } else {
-      wht = Math.round(incentiveTotal * 0.03)
+      wht = Math.round(incentiveTotal * 0.03 * 100) / 100
     }
-    setForm((prev) => ({ ...prev, withholding_tax: String(wht) }))
+    // ตอนเปิดฟอร์มแก้ไขครั้งแรก ใช้ค่า WHT ที่บันทึกไว้เดิม ไม่ทับด้วยค่าคำนวณใหม่
+    if (editingPayslip && lastEditedId.current !== editingPayslip.id) {
+      lastEditedId.current = editingPayslip.id
+      return
+    }
+    if (!editingPayslip) lastEditedId.current = null
+    setForm((prev) => ({ ...prev, withholding_tax: wht.toFixed(2) }))
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form.base_salary, incentiveTotal, lineItemsTotal, isFreelance, isOwner])
+  }, [form.base_salary, incentiveTotal, lineItemsTotal, isFreelance, isOwner, editingPayslip])
 
   useEffect(() => {
     fetch('/api/employees').then((r) => r.json()).then((d) => setEmployees(Array.isArray(d) ? d : []))
   }, [])
+
+  useEffect(() => {
+    if (showForm) formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [showForm])
+
+  // Incoming from Peepz Flow: set month filter + highlight the payslip
+  useEffect(() => {
+    if (!incomingPayslipId) return
+    if (incomingMonth) {
+      const [yearStr, monthStr] = incomingMonth.split('-')
+      const m = parseInt(monthStr, 10)
+      const y = parseInt(yearStr, 10)
+      if (!isNaN(m) && !isNaN(y)) {
+        setFilterMonth(m)
+        setFilterYear(y)
+        setFreelanceFilter('all')
+      }
+    }
+    setHighlightId(incomingPayslipId)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [incomingPayslipId])
+
+  // Scroll to highlighted payslip after payslips load
+  useEffect(() => {
+    if (!highlightId || loading) return
+    setTimeout(() => highlightRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 300)
+  }, [highlightId, loading])
 
   useEffect(() => {
     if (!selectedEmployee || editingPayslip) return
@@ -147,6 +197,18 @@ export default function PayslipTab() {
     fetch(`/api/payslips?month=${filterMonth}&year=${filterYear}`)
       .then((r) => r.json())
       .then((d) => { setPayslips(Array.isArray(d) ? d : []); setLoading(false) })
+  }, [filterMonth, filterYear])
+
+  // โหลดสลิป Freelance ของเดือนก่อน เพื่อเช็คว่าใครยังไม่มีสลิปเดือนนี้
+  const [prevFreelancePayslips, setPrevFreelancePayslips] = useState<Payslip[]>([])
+  useEffect(() => {
+    const prevMonth = filterMonth === 1 ? 12 : filterMonth - 1
+    const prevYear = filterMonth === 1 ? filterYear - 1 : filterYear
+    fetch(`/api/payslips?month=${prevMonth}&year=${prevYear}`)
+      .then((r) => r.json())
+      .then((d) => setPrevFreelancePayslips(
+        Array.isArray(d) ? d.filter((p: Payslip) => p.employee?.type === 'freelance' || p.guest_type === 'freelance') : []
+      ))
   }, [filterMonth, filterYear])
 
   function updateOtItem(idx: number, patch: Partial<OtItem>) {
@@ -211,8 +273,14 @@ export default function PayslipTab() {
       admin_note: form.admin_note,
       transfer_date: form.transfer_date || null,
       due_date: form.due_date || null,
+      document_url: form.document_url || null,
+      payment_doc_url: form.payment_doc_url || null,
+      wht_cert_email: form.wht_cert_email || null,
+      freelance_confirm_id_card_url: form.freelance_confirm_id_card_url || null,
+      freelance_confirm_bank_book_url: form.freelance_confirm_bank_book_url || null,
       send_email: form.send_email,
       line_items: isFreelance ? lineItems.filter((i) => i.total > 0) : [],
+      is_paid: !!form.transfer_date,
     }
     try {
       const res = await fetch('/api/payslips', {
@@ -235,17 +303,40 @@ export default function PayslipTab() {
     }
   }
 
+  async function ensureRecipientEmail(payslip: Payslip): Promise<Payslip | null> {
+    if (payslip.employee?.email || payslip.guest_email || payslip.wht_cert_email) return payslip
+    const name = payslip.employee?.name ?? payslip.guest_name ?? ''
+    const email = window.prompt(`ยังไม่มีอีเมลของ "${name}" ในระบบ\nกรุณากรอกอีเมลเพื่อส่ง (จะบันทึกไว้ใช้ครั้งต่อไปด้วย):`)
+    if (!email || !email.trim()) return null
+    const res = await fetch(`/api/payslips/${payslip.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ wht_cert_email: email.trim() }),
+    })
+    if (!res.ok) { alert('บันทึกอีเมลไม่สำเร็จ'); return null }
+    const updated = { ...payslip, wht_cert_email: email.trim() }
+    setPayslips((prev) => prev.map((p) => p.id === payslip.id ? updated : p))
+    return updated
+  }
+
   async function resendEmail(payslip: Payslip) {
+    const target = await ensureRecipientEmail(payslip)
+    if (!target) return
     setSending(payslip.id)
     const res = await fetch(`/api/payslips/${payslip.id}/send-email`, { method: 'POST' })
     if (!res.ok) {
       const d = await res.json()
       alert('ส่ง email ไม่ได้: ' + d.error)
+    } else {
+      setSentFlash(payslip.id)
+      setTimeout(() => setSentFlash(null), 2000)
     }
     setSending(null)
   }
 
   async function sendTransferConfirm(payslip: Payslip, date?: string) {
+    const target = await ensureRecipientEmail(payslip)
+    if (!target) return
     setConfirmingSend(payslip.id)
     const res = await fetch(`/api/payslips/${payslip.id}/transfer-confirm`, {
       method: 'POST',
@@ -257,6 +348,8 @@ export default function PayslipTab() {
       alert('ส่งไม่ได้: ' + d.error)
     } else {
       setPayslips((prev) => prev.map((p) => p.id === payslip.id ? { ...p, transfer_date: date || p.transfer_date || new Date().toISOString().slice(0, 10) } : p))
+      setConfirmFlash(payslip.id)
+      setTimeout(() => setConfirmFlash(null), 2000)
     }
     setConfirmingSend(null)
   }
@@ -282,9 +375,32 @@ export default function PayslipTab() {
     setPayslips((prev) => prev.map((p) => p.id === payslip.id ? { ...p, is_paid: true, transfer_date: today } : p))
   }
 
+  function copyItemList(p: Payslip) {
+    const items = p.line_items ?? []
+    let lines: string[]
+    if (items.length > 0) {
+      lines = items.map(it => `${it.description || '(ไม่ระบุ)'}${it.quantity ? ` ${it.quantity} ${it.unit}` : ''}`)
+    } else {
+      lines = [p.project_name || 'ค่าจ้าง']
+      if (p.other_income_note) lines.push(p.other_income_note)
+    }
+    const name = p.employee?.name ?? p.guest_name ?? ''
+    navigator.clipboard.writeText([name, ...lines].join('\n'))
+    alert('คัดลอกรายการแล้ว ✅')
+  }
+
+  function copyConfirmLink(p: Payslip) {
+    const url = `${window.location.origin}/freelance-confirm/${p.id}`
+    const text = `รบกวนเช็คยอดที่บัญชีจะโอนให้ในรอบนี้ค่ะ รวมถึงส่งลิงก์สำเนาบัตรประชาชนและ Book Bank และกรอกอีเมลเพื่อให้บัญชีส่งใบ 50 ทวิให้นะคะ ขอบคุณค่า\n\n${url}`
+    navigator.clipboard.writeText(text)
+    alert('คัดลอกข้อความ + ลิงก์แล้ว ✅')
+  }
+
   function startEdit(p: Payslip) {
     if (p.line_items?.length) setLineItems(p.line_items)
-    else setLineItems([{ ...EMPTY_LINE }])
+    else if ((p.guest_type === 'freelance' || p.employee?.type === 'freelance') && p.base_salary > 0) {
+      setLineItems([{ description: p.project_name || 'ค่าจ้าง', quantity: 1, unit: 'งาน', rate: p.base_salary, total: p.base_salary }])
+    } else setLineItems([{ ...EMPTY_LINE }])
     // Load ot_items or convert legacy ot_hours to single row
     if (p.ot_items?.length) {
       setOtItems(p.ot_items)
@@ -300,6 +416,14 @@ export default function PayslipTab() {
       setIncentiveItems([{ description: p.incentive_note || 'Incentive', amount: p.incentive }])
     } else {
       setIncentiveItems([])
+    }
+    if (p.employee_id) {
+      setGuestMode(false)
+    } else {
+      setGuestMode(true)
+      setGuestName(p.guest_name || '')
+      setGuestEmail(p.guest_email || '')
+      setGuestType((p.guest_type as 'fulltime' | 'freelance') || 'freelance')
     }
     setEditingPayslip(p)
     setForm({
@@ -321,6 +445,11 @@ export default function PayslipTab() {
       admin_note: p.admin_note || '',
       transfer_date: p.transfer_date || '',
       due_date: p.due_date || '',
+      document_url: p.document_url || '',
+      payment_doc_url: p.payment_doc_url || '',
+      wht_cert_email: p.wht_cert_email || '',
+      freelance_confirm_id_card_url: p.freelance_confirm_id_card_url || p.employee?.doc_id_card_url || '',
+      freelance_confirm_bank_book_url: p.freelance_confirm_bank_book_url || p.employee?.doc_bank_book_url || '',
       send_email: false,
     })
     setShowForm(true)
@@ -353,7 +482,13 @@ export default function PayslipTab() {
       other_deduction_note: form.other_deduction_note,
       admin_note: form.admin_note,
       transfer_date: form.transfer_date || null,
+      document_url: form.document_url || null,
+      payment_doc_url: form.payment_doc_url || null,
+      wht_cert_email: form.wht_cert_email || null,
+      freelance_confirm_id_card_url: form.freelance_confirm_id_card_url || null,
+      freelance_confirm_bank_book_url: form.freelance_confirm_bank_book_url || null,
       line_items: isFreelance ? lineItems.filter((i) => i.total > 0) : [],
+      is_paid: !!form.transfer_date,
     }
     const res = await fetch(`/api/payslips/${editingPayslip.id}`, {
       method: 'PATCH',
@@ -397,7 +532,7 @@ export default function PayslipTab() {
 
   function exportCSV() {
     const MONTHS_TH = ['','ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.']
-    const headers = ['ชื่อ','อีเมล','งวด','ประเภท','เงินเดือน','OT (ชม.)','ค่า OT','Incentive','รายได้อื่น','รวมรายได้','ประกันสังคม','ภาษีหัก','หักอื่น','รวมหัก','ยอดสุทธิ','วันที่โอน','หมายเหตุ']
+    const headers = ['ชื่อ','อีเมล','งวด','ประเภท','เงินเดือน','OT (ชม.)','ค่า OT','Incentive','รายได้อื่น','รวมรายได้','ประกันสังคม','ภาษีหัก','หักอื่น','รวมหัก','ยอดสุทธิ','วันที่โอน','หมายเหตุ','ลิงก์เอกสารประกอบ','ลิงก์เอกสารทำจ่าย','อีเมลใบ 50 ทวิ']
     const rows = payslips.map((p) => [
       p.employee?.name ?? p.guest_name ?? '',
       p.employee?.email ?? p.guest_email ?? '',
@@ -416,6 +551,9 @@ export default function PayslipTab() {
       p.net_pay,
       p.transfer_date ? new Date(p.transfer_date).toLocaleDateString('th-TH') : '',
       p.admin_note ?? '',
+      p.document_url ?? '',
+      p.payment_doc_url ?? '',
+      p.wht_cert_email ?? '',
     ])
     const csv = [headers, ...rows].map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')
     const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' })
@@ -430,11 +568,262 @@ export default function PayslipTab() {
 
   const MONTHS = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
 
+  const freelanceUnpaid = payslips.filter(p =>
+    (p.employee?.type === 'freelance' || p.guest_type === 'freelance') && !p.is_paid
+  )
+  const freelancePayslipsAll = payslips.filter(p =>
+    p.employee?.type === 'freelance' || p.guest_type === 'freelance'
+  )
+  const freelanceDisplayed = freelanceFilter === 'unpaid' ? freelancePayslipsAll.filter(p => !p.is_paid)
+    : freelanceFilter === 'paid' ? freelancePayslipsAll.filter(p => p.is_paid)
+    : freelancePayslipsAll
+  const freelanceTotalGross = freelancePayslipsAll.reduce((s, p) => s + p.gross_income, 0)
+  const freelanceTotalWht = freelancePayslipsAll.reduce((s, p) => s + p.withholding_tax, 0)
+  const freelanceTotalNet = freelancePayslipsAll.reduce((s, p) => s + p.net_pay, 0)
+
+  // Freelance ที่มีสลิปเดือนก่อน แต่ยังไม่มีสลิปของเดือนนี้ (น่าจะเป็น Freelance ประจำ)
+  const freelanceMissingThisMonth = prevFreelancePayslips.filter(prev => {
+    const key = prev.employee_id ?? prev.guest_email ?? prev.guest_name
+    return !payslips.some(p => (p.employee_id ?? p.guest_email ?? p.guest_name) === key)
+  })
+
+  function quickCreateFromPrevious(prev: Payslip, keepIncome = true) {
+    setGuestMode(!prev.employee_id)
+    if (!prev.employee_id) {
+      setGuestName(prev.guest_name || '')
+      setGuestEmail(prev.guest_email || '')
+      setGuestType(prev.guest_type === 'fulltime' ? 'fulltime' : 'freelance')
+    }
+    setLineItems(keepIncome && prev.line_items?.length ? prev.line_items.map(i => ({ ...i })) : [{ ...EMPTY_LINE }])
+    setOtItems([])
+    setIncentiveItems([])
+    setEditingPayslip(null)
+    setForm({
+      employee_id: prev.employee_id ?? '',
+      period_month: filterMonth,
+      period_year: filterYear,
+      base_salary: keepIncome ? (prev.base_salary?.toString() ?? '') : '',
+      incentive: '', incentive_note: '',
+      other_income: keepIncome && prev.other_income ? prev.other_income.toString() : '',
+      other_income_note: keepIncome ? (prev.other_income_note || '') : '',
+      project_name: prev.project_name || '',
+      work_days: '', daily_rate: '',
+      social_security: prev.social_security?.toString() ?? '0',
+      withholding_tax: '0',
+      other_deduction: '0', other_deduction_note: '',
+      admin_note: '',
+      transfer_date: '',
+      due_date: '',
+      document_url: '',
+      payment_doc_url: '',
+      wht_cert_email: prev.wht_cert_email || '',
+      freelance_confirm_id_card_url: prev.freelance_confirm_id_card_url || prev.employee?.doc_id_card_url || '',
+      freelance_confirm_bank_book_url: prev.freelance_confirm_bank_book_url || prev.employee?.doc_bank_book_url || '',
+      send_email: true,
+    })
+    setShowForm(true)
+  }
+
+  async function payOneFreelancer(p: Payslip) {
+    const today = new Date().toISOString().slice(0, 10)
+    const patch: Record<string, unknown> = { is_paid: true, transfer_date: today }
+    if (batchDocLinks[p.id]) patch.document_url = batchDocLinks[p.id]
+    const res = await fetch(`/api/payslips/${p.id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    })
+    if (res.ok) {
+      setPayslips(prev => prev.map(x => x.id === p.id
+        ? { ...x, is_paid: true, transfer_date: today, document_url: batchDocLinks[p.id] || x.document_url }
+        : x))
+      setBatchSelected(prev => { const s = new Set(prev); s.delete(p.id); return s })
+    }
+  }
+
+  function openNewFreelanceForm() {
+    setEditingPayslip(null)
+    setGuestMode(true)
+    setGuestName('')
+    setGuestEmail('')
+    setGuestType('freelance')
+    setLineItems([{ ...EMPTY_LINE }])
+    setOtItems([])
+    setIncentiveItems([])
+    setForm({
+      employee_id: '',
+      period_month: filterMonth,
+      period_year: filterYear,
+      base_salary: '',
+      incentive: '', incentive_note: '',
+      other_income: '', other_income_note: '',
+      project_name: '', work_days: '', daily_rate: '',
+      social_security: '0', withholding_tax: '0',
+      other_deduction: '', other_deduction_note: '',
+      admin_note: '',
+      transfer_date: '',
+      due_date: '',
+      document_url: '',
+      payment_doc_url: '',
+      wht_cert_email: '',
+      freelance_confirm_id_card_url: '',
+      freelance_confirm_bank_book_url: '',
+      send_email: true,
+    })
+    setShowForm(true)
+  }
+
+  async function payBatch() {
+    if (batchSelected.size === 0) return
+    if (!confirm(`ยืนยันจ่ายค่าบริการ ${batchSelected.size} คน?\nรวม ฿${freelanceUnpaid.filter(p => batchSelected.has(p.id)).reduce((s, p) => s + p.net_pay, 0).toLocaleString('th-TH')}`)) return
+    setBatchPaying(true)
+    const today = new Date().toISOString().slice(0, 10)
+    await Promise.all(Array.from(batchSelected).map(id => {
+      const patch: Record<string, unknown> = { is_paid: true, transfer_date: today }
+      if (batchDocLinks[id]) patch.document_url = batchDocLinks[id]
+      return fetch(`/api/payslips/${id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      })
+    }))
+    setPayslips(prev => prev.map(p =>
+      batchSelected.has(p.id)
+        ? { ...p, is_paid: true, transfer_date: today, document_url: batchDocLinks[p.id] || p.document_url }
+        : p
+    ))
+    setBatchSelected(new Set())
+    setBatchDocLinks({})
+    setBatchPaying(false)
+  }
+
+  const renderPayslipRow = (p: Payslip) => (
+                <tr key={p.id} className="hover:bg-gray-50">
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <p className="font-medium text-gray-800">{p.employee?.name ?? p.guest_name}</p>
+                      {p.created_by && (
+                        <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${p.created_by === 'Prae' ? 'bg-pink-100 text-pink-500' : p.created_by === 'Ploy' ? 'bg-gray-100 text-gray-500' : 'bg-gray-100 text-gray-500'}`}>
+                          {p.created_by}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-gray-400">{p.employee?.email ?? p.guest_email}</p>
+                    {p.document_url && (
+                      <a href={p.document_url} target="_blank" rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-xs text-blue-500 hover:text-blue-700 hover:underline mt-0.5">
+                        📎 เอกสารประกอบ
+                      </a>
+                    )}
+                    {p.payment_doc_url && (
+                      <a href={p.payment_doc_url} target="_blank" rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-xs text-blue-500 hover:text-blue-700 hover:underline mt-0.5 ml-2">
+                        📄 เอกสารทำจ่าย
+                      </a>
+                    )}
+                    {p.wht_cert_email && (
+                      <span className="inline-flex items-center gap-1 text-xs text-gray-400 mt-0.5 ml-2">
+                        📧 50ทวิ: {p.wht_cert_email}
+                      </span>
+                    )}
+                    {(p.employee?.doc_id_card_url || p.employee?.doc_bank_book_url) && (
+                      <div className="flex gap-2 mt-0.5 flex-wrap">
+                        {p.employee?.doc_id_card_url && (
+                          <a href={p.employee.doc_id_card_url} target="_blank" rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-xs text-indigo-400 hover:text-indigo-600 hover:underline">
+                            🪪 บัตรประชาชน
+                          </a>
+                        )}
+                        {p.employee?.doc_bank_book_url && (
+                          <a href={p.employee.doc_bank_book_url} target="_blank" rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-xs text-indigo-400 hover:text-indigo-600 hover:underline">
+                            🏦 Book Bank
+                          </a>
+                        )}
+                      </div>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-gray-600">
+                    {formatPeriod(p.period_month, p.period_year)}
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <p className="font-semibold text-gray-800">{formatCurrency(p.net_pay)}</p>
+                    {p.is_paid ? (
+                      <p className="text-xs text-green-600 font-medium">
+                        {(p.employee?.type === 'freelance' || p.guest_type === 'freelance') ? '✅ จ่ายค่าบริการแล้ว' : '✅ จ่ายแล้ว'}
+                        {' '}{p.transfer_date ? new Date(p.transfer_date).toLocaleDateString('th-TH') : ''}
+                      </p>
+                    ) : p.due_date ? (
+                      <p className={`text-xs font-medium ${new Date(p.due_date) < new Date() ? 'text-red-500' : 'text-amber-500'}`}>
+                        🗓 ครบกำหนด {new Date(p.due_date).toLocaleDateString('th-TH')}
+                        {new Date(p.due_date) < new Date() ? ' ⚠️ เกินกำหนด' : ''}
+                      </p>
+                    ) : null}
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center justify-center gap-1 flex-wrap">
+                      {!isReadOnly && !p.is_paid && (
+                        <button onClick={() => markPaid(p)} title="กดเมื่อจ่ายแล้ว"
+                          className="flex items-center gap-1 px-2 py-1 text-xs bg-green-500 text-white rounded-lg hover:bg-green-600 font-medium">
+                          <Banknote size={12} />
+                          {(p.employee?.type === 'freelance' || p.guest_type === 'freelance') ? 'จ่ายค่าบริการแล้ว' : 'จ่ายแล้ว'}
+                        </button>
+                      )}
+                      <button onClick={() => setViewPayslip(p)} title="ดูสลิป"
+                        className="p-1.5 text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 rounded">
+                        <Eye size={14} />
+                      </button>
+                      {!isReadOnly && (
+                        <>
+                          <button onClick={() => startEdit(p)} title="แก้ไข"
+                            className="p-1.5 text-gray-500 hover:text-amber-600 hover:bg-amber-50 rounded">
+                            <Pencil size={14} />
+                          </button>
+                          <button onClick={() => resendEmail(p)} title="ส่งสลิป Email" disabled={sending === p.id}
+                            className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded disabled:opacity-40">
+                            {sending === p.id ? <Loader2 size={14} className="animate-spin" /> : sentFlash === p.id ? <Check size={14} className="text-green-600" /> : <Send size={14} />}
+                          </button>
+                          <button
+                            onClick={() => sendTransferConfirm(p)}
+                            title="ส่งยืนยันการโอนเงิน"
+                            disabled={confirmingSend === p.id}
+                            className="p-1.5 text-gray-500 hover:text-green-600 hover:bg-green-50 rounded disabled:opacity-40"
+                          >
+                            {confirmingSend === p.id ? <Loader2 size={14} className="animate-spin" /> : confirmFlash === p.id ? <Check size={14} className="text-green-600" /> : <Banknote size={14} />}
+                          </button>
+                          <button onClick={() => deletePayslip(p.id)} title="ลบ" disabled={deleting === p.id}
+                            className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded disabled:opacity-40">
+                            <Trash2 size={14} />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+  )
+
+  const fulltimePayslips = payslips.filter(p => !(p.employee?.type === 'freelance' || p.guest_type === 'freelance'))
+  const freelancePayslipsList = payslips.filter(p => p.employee?.type === 'freelance' || p.guest_type === 'freelance')
+
+  const listTotalAll = payslips.reduce((s, p) => s + p.net_pay, 0)
+  const listTotalPaid = payslips.filter(p => p.is_paid).reduce((s, p) => s + p.net_pay, 0)
+  const listTotalUnpaid = listTotalAll - listTotalPaid
+  const listUnpaidCount = payslips.filter(p => !p.is_paid).length
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2 flex-wrap">
           <h2 className="text-lg font-bold text-gray-800">🧾 สลิปเงินเดือน</h2>
+          <div className="flex bg-gray-100 rounded-lg p-0.5">
+            {(['list', 'batch'] as const).map(t => (
+              <button key={t} onClick={() => setSubTab(t)}
+                className={`relative px-2.5 py-1 rounded-md text-xs font-medium transition ${subTab === t ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500 hover:text-gray-700'}`}>
+                {t === 'list' ? '📋 รายการ' : '💸 รอบจ่าย'}
+                {t === 'batch' && (freelanceUnpaid.length + freelanceMissingThisMonth.length) > 0 && (
+                  <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-red-500" />
+                )}
+              </button>
+            ))}
+          </div>
           <select
             value={filterMonth}
             onChange={(e) => setFilterMonth(Number(e.target.value))}
@@ -458,18 +847,22 @@ export default function PayslipTab() {
           <button onClick={downloadTemplate} className="flex items-center gap-1 text-xs sm:text-sm border border-gray-300 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg hover:bg-gray-50">
             <Download size={14} /> <span className="hidden sm:inline">Template</span>
           </button>
-          <label className="flex items-center gap-1 text-xs sm:text-sm border border-gray-300 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg hover:bg-gray-50 cursor-pointer">
-            <Upload size={14} /> {importing ? 'นำเข้า...' : <><span className="hidden sm:inline">Import </span>Excel</>}
-            <input ref={fileRef} type="file" accept=".xlsx,.csv" className="hidden" onChange={handleImport} disabled={importing} />
-          </label>
+          {!isReadOnly && (
+            <label className="flex items-center gap-1 text-xs sm:text-sm border border-gray-300 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg hover:bg-gray-50 cursor-pointer">
+              <Upload size={14} /> {importing ? 'นำเข้า...' : <><span className="hidden sm:inline">Import </span>Excel</>}
+              <input ref={fileRef} type="file" accept=".xlsx,.csv" className="hidden" onChange={handleImport} disabled={importing} />
+            </label>
+          )}
           {payslips.length > 0 && (
             <button onClick={exportCSV} className="flex items-center gap-1 text-xs sm:text-sm border border-gray-300 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg hover:bg-gray-50 text-green-700 border-green-300">
               <Download size={14} /> CSV
             </button>
           )}
-          <button onClick={() => { setShowForm(!showForm); setEditingPayslip(null); setOtItems([]) }} className="flex items-center gap-1 text-xs sm:text-sm bg-indigo-600 text-white px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg hover:bg-indigo-700">
-            <Plus size={14} /> สร้างสลิป
-          </button>
+          {!isReadOnly && (
+            <button onClick={() => { setShowForm(!showForm); setEditingPayslip(null); setOtItems([]) }} className="flex items-center gap-1 text-xs sm:text-sm bg-indigo-600 text-white px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg hover:bg-indigo-700">
+              <Plus size={14} /> สร้างสลิป
+            </button>
+          )}
         </div>
       </div>
 
@@ -479,8 +872,327 @@ export default function PayslipTab() {
         </div>
       )}
 
+      {/* ─── Batch Payment View ─── */}
+      {subTab === 'batch' && (
+        <div className="space-y-3">
+          {freelanceUnpaid.length === 0 && freelancePayslipsAll.length > 0 && (
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-8 text-center">
+              <PartyPopper size={32} className="mx-auto mb-2 text-emerald-400" />
+              <p className="text-gray-600 font-medium">จ่ายครบทุกคนแล้ว!</p>
+              <p className="text-xs text-gray-400 mt-1">ไม่มี Freelance ค้างจ่ายในเดือนนี้</p>
+            </div>
+          )}
+
+          {/* Freelance ที่เคยมีสลิปเดือนก่อน แต่ยังไม่ได้สร้างของเดือนนี้ */}
+          {freelanceMissingThisMonth.length > 0 && (
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+              <p className="text-sm font-semibold text-blue-800 mb-2 flex items-center gap-1.5">
+                <UserPlus size={16} /> Freelance ที่มีสลิปเดือนก่อน แต่ยังไม่ได้สร้างของเดือนนี้ ({freelanceMissingThisMonth.length} คน)
+              </p>
+              <div className="space-y-1.5">
+                {freelanceMissingThisMonth.map(p => (
+                  <div key={p.id} className="flex items-center justify-between gap-2 bg-white rounded-lg px-3 py-2 border border-blue-100">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-gray-800 truncate">{p.employee?.name ?? p.guest_name}</p>
+                      <p className="text-xs text-gray-400">
+                        เดือนก่อน: {formatCurrency(p.net_pay)}
+                        {p.line_items?.length ? ` · ${p.line_items.length} รายการ` : ''}
+                      </p>
+                    </div>
+                    {!isReadOnly && (
+                      <button onClick={() => quickCreateFromPrevious(p)}
+                        className="flex items-center gap-1 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700 whitespace-nowrap shrink-0">
+                        <Plus size={12} /> สร้างสลิปเดือนนี้
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {freelancePayslipsAll.length === 0 && freelanceMissingThisMonth.length === 0 && (
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-8 text-center">
+              <p className="text-gray-400 text-sm">ยังไม่มีงาน Freelance ในเดือนนี้</p>
+            </div>
+          )}
+
+          {freelancePayslipsAll.length > 0 && (
+            <>
+              {/* Summary cards */}
+              <div className="grid grid-cols-3 gap-2 sm:gap-3">
+                <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-3 flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center shrink-0">
+                    <Wallet size={15} className="text-gray-500" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs text-gray-400 truncate">ยอดรวม</p>
+                    <p className="font-bold text-gray-800 text-sm sm:text-base truncate">{formatCurrency(freelanceTotalGross)}</p>
+                  </div>
+                </div>
+                <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-3 flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center shrink-0">
+                    <Receipt size={15} className="text-red-400" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs text-gray-400 truncate">หัก 3%</p>
+                    <p className="font-bold text-red-500 text-sm sm:text-base truncate">{formatCurrency(freelanceTotalWht)}</p>
+                  </div>
+                </div>
+                <div className="bg-green-50 rounded-xl border border-green-200 shadow-sm p-3 flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-green-100 flex items-center justify-center shrink-0">
+                    <Banknote size={15} className="text-green-600" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs text-green-700 truncate">ยอดโอนสุทธิ</p>
+                    <p className="font-bold text-green-700 text-sm sm:text-base truncate">{formatCurrency(freelanceTotalNet)}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Filter chips + batch pay */}
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex bg-gray-100 rounded-lg p-0.5">
+                  {([
+                    ['all', `ทั้งหมด (${freelancePayslipsAll.length})`],
+                    ['unpaid', `รอโอน (${freelancePayslipsAll.filter(p => !p.is_paid).length})`],
+                    ['paid', `โอนแล้ว (${freelancePayslipsAll.filter(p => p.is_paid).length})`],
+                  ] as const).map(([key, label]) => (
+                    <button key={key} onClick={() => setFreelanceFilter(key)}
+                      className={`px-2.5 py-1 rounded-md text-xs font-medium transition ${freelanceFilter === key ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500 hover:text-gray-700'}`}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                {!isReadOnly && freelanceUnpaid.length > 0 && (
+                  <button
+                    onClick={() => setBatchSelected(
+                      batchSelected.size === freelanceUnpaid.length
+                        ? new Set()
+                        : new Set(freelanceUnpaid.map(p => p.id))
+                    )}
+                    className="text-xs text-amber-700 hover:text-amber-900 underline">
+                    {batchSelected.size === freelanceUnpaid.length ? 'ยกเลิกเลือกทั้งหมด' : 'เลือกทั้งหมด (รอโอน)'}
+                  </button>
+                )}
+              </div>
+
+              {!isReadOnly && batchSelected.size > 0 && (
+                <button onClick={payBatch} disabled={batchPaying}
+                  className="w-full flex items-center justify-center gap-1.5 bg-green-600 text-white px-4 py-2.5 rounded-xl text-sm font-semibold hover:bg-green-700 disabled:opacity-60">
+                  <Banknote size={14} />
+                  {batchPaying ? 'กำลังจ่าย...' : `จ่ายค่าบริการ ${batchSelected.size} คน — ${formatCurrency(freelanceUnpaid.filter(p => batchSelected.has(p.id)).reduce((s, p) => s + p.net_pay, 0))}`}
+                </button>
+              )}
+
+              {/* Banner เมื่อมาจาก Peepz Flow */}
+              {highlightId && (
+                <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-sm text-emerald-700">
+                  <span className="text-lg">✅</span>
+                  <div>
+                    <p className="font-semibold">บันทึกแล้ว!</p>
+                    <p className="text-xs text-emerald-600">สลิปถูกสร้างจาก Peepz Flow — สถานะ "รอโอน" รอคุณอนุมัติจ่ายค่ะ</p>
+                  </div>
+                  <button onClick={() => setHighlightId(null)} className="ml-auto text-emerald-400 hover:text-emerald-600">✕</button>
+                </div>
+              )}
+
+              {/* Freelance cards */}
+              <div className="space-y-2.5">
+                {freelanceDisplayed.length === 0 && (
+                  <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6 text-center text-sm text-gray-400">
+                    ไม่มีรายการในหมวดนี้
+                  </div>
+                )}
+                {freelanceDisplayed.map(p => {
+                  const name = p.employee?.name ?? p.guest_name ?? '-'
+                  const checked = batchSelected.has(p.id)
+                  const items = p.line_items ?? []
+                  const expanded = expandedFreelance.has(p.id)
+                  const visibleItems = expanded ? items : items.slice(0, 2)
+                  const isHighlighted = p.id === highlightId
+                  return (
+                    <div key={p.id} ref={isHighlighted ? highlightRef : null}
+                      className={`bg-white rounded-xl border shadow-sm p-4 transition-all ${
+                        isHighlighted ? 'border-emerald-400 ring-2 ring-emerald-200 bg-emerald-50/20' :
+                        checked ? 'border-green-300 bg-green-50/30' : 'border-gray-100'
+                      }`}>
+                      <div className="flex items-start justify-between gap-2 mb-2">
+                        <div className="flex items-start gap-2">
+                          {!isReadOnly && !p.is_paid && (
+                            <button className="mt-0.5" onClick={() => {
+                              const s = new Set(batchSelected)
+                              checked ? s.delete(p.id) : s.add(p.id)
+                              setBatchSelected(s)
+                            }}>
+                              {checked
+                                ? <CheckSquare size={18} className="text-green-600" />
+                                : <Square size={18} className="text-gray-300" />}
+                            </button>
+                          )}
+                          <div>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <p className="font-semibold text-gray-800">{name}</p>
+                              {p.employee_id && (
+                                <span className="text-[10px] bg-indigo-50 text-indigo-500 px-1.5 py-0.5 rounded-full font-medium">ประจำทุกเดือน</span>
+                              )}
+                            </div>
+                            <p className="text-xs text-gray-400">{items.length > 0 ? `${items.length} รายการงาน` : (p.project_name || '')}</p>
+                            {(p.employee?.email || p.guest_email) && (
+                              <p className="text-xs text-gray-400">✉️ {p.employee?.email || p.guest_email}</p>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {!isReadOnly && (
+                            <button onClick={() => startEdit(p)} title="แก้ไขสลิปนี้"
+                              className="flex items-center gap-1 text-[10px] font-medium text-amber-600 bg-amber-50 px-2 py-1 rounded-full hover:bg-amber-100 whitespace-nowrap">
+                              <Pencil size={11} /> แก้ไข
+                            </button>
+                          )}
+                          {!isReadOnly && (
+                            <button onClick={() => quickCreateFromPrevious(p, false)} title="ทำซ้ำสลิปนี้ (ไม่นำรายได้เดิมมาด้วย)"
+                              className="flex items-center gap-1 text-[10px] font-medium text-indigo-500 bg-indigo-50 px-2 py-1 rounded-full hover:bg-indigo-100 whitespace-nowrap">
+                              <Copy size={11} /> ทำซ้ำ
+                            </button>
+                          )}
+                          <span className={`text-[10px] font-semibold px-2 py-1 rounded-full whitespace-nowrap ${p.is_paid ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                            {p.is_paid ? '✅ โอนแล้ว' : 'รอโอน'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {!p.is_paid && (
+                        <div className={`flex items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 mb-2 text-xs ${p.freelance_confirmed_at ? 'bg-green-50 text-green-700' : 'bg-gray-50 text-gray-500'}`}>
+                          {p.freelance_confirmed_at ? (
+                            <span>✅ Freelance ยืนยันข้อมูลแล้ว เมื่อ {new Date(p.freelance_confirmed_at).toLocaleString('th-TH')}</span>
+                          ) : (
+                            <span>⏳ รอ Freelance ยืนยันข้อมูล/ส่งเอกสาร</span>
+                          )}
+                          {!isReadOnly && (
+                            <button
+                              onClick={() => copyConfirmLink(p)}
+                              className="text-indigo-500 hover:underline whitespace-nowrap">
+                              🔗 คัดลอกลิงก์ส่งให้ Freelance
+                            </button>
+                          )}
+                        </div>
+                      )}
+                      {p.freelance_confirmed_at && (p.freelance_confirm_id_card_url || p.freelance_confirm_bank_book_url) && (
+                        <div className="flex items-center gap-3 text-xs mb-2">
+                          {p.freelance_confirm_id_card_url && (
+                            <a href={p.freelance_confirm_id_card_url} target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:underline">🪪 บัตรประชาชน (จาก Freelance)</a>
+                          )}
+                          {p.freelance_confirm_bank_book_url && (
+                            <a href={p.freelance_confirm_bank_book_url} target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:underline">🏦 Book Bank (จาก Freelance)</a>
+                          )}
+                        </div>
+                      )}
+
+                      {items.length > 0 ? (
+                        <div className="space-y-1 mb-2">
+                          {visibleItems.map((it, i) => (
+                            <div key={i} className="flex items-center justify-between text-sm">
+                              <span className="text-gray-600">{it.description || '(ไม่ระบุ)'} {it.quantity ? `· ${it.quantity} ${it.unit}` : ''}</span>
+                              <span className="text-gray-700 font-medium">{formatCurrency(it.total)}</span>
+                            </div>
+                          ))}
+                          {items.length > 2 && (
+                            <button
+                              onClick={() => setExpandedFreelance(prev => {
+                                const s = new Set(prev)
+                                expanded ? s.delete(p.id) : s.add(p.id)
+                                return s
+                              })}
+                              className="text-xs text-indigo-500 hover:underline">
+                              {expanded ? 'ย่อรายการ' : `ดูทั้งหมด (${items.length}) ▾`}
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="space-y-1 mb-2">
+                          {p.base_salary > 0 && (
+                            <div className="flex items-center justify-between text-sm">
+                              <span className="text-gray-600">{p.project_name || 'ค่าจ้าง'}</span>
+                              <span className="text-gray-700 font-medium">{formatCurrency(p.base_salary)}</span>
+                            </div>
+                          )}
+                          {p.other_income > 0 && (
+                            <div className="flex items-center justify-between text-sm">
+                              <span className="text-gray-600">{p.other_income_note || 'รายได้อื่นๆ'}</span>
+                              <span className="text-gray-700 font-medium">{formatCurrency(p.other_income)}</span>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      <div className="border-t pt-2 flex items-center justify-between text-xs text-gray-500 mb-2">
+                        <span>รวม {formatCurrency(p.gross_income)} — หัก 3% {formatCurrency(p.withholding_tax)}</span>
+                        <span className="text-base font-bold text-indigo-700">โอน {formatCurrency(p.net_pay)}</span>
+                      </div>
+
+                      <button
+                        onClick={() => copyItemList(p)}
+                        className="text-xs text-indigo-500 hover:underline mb-2">
+                        📋 คัดลอกรายการงาน (สำหรับโน้ตใบเสร็จ)
+                      </button>
+
+                      {p.is_paid ? (
+                        <div className="flex items-center gap-3 text-xs text-gray-400 flex-wrap">
+                          {p.transfer_date && <span>โอนเมื่อ {new Date(p.transfer_date).toLocaleDateString('th-TH')}</span>}
+                          {p.document_url && (
+                            <a href={p.document_url} target="_blank" rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-blue-500 hover:underline">
+                              📎 สลิป
+                            </a>
+                          )}
+                          {p.payment_doc_url && (
+                            <a href={p.payment_doc_url} target="_blank" rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-blue-500 hover:underline">
+                              📄 เอกสารทำจ่าย
+                            </a>
+                          )}
+                          {!isReadOnly && (
+                            <button
+                              onClick={() => copyConfirmLink(p)}
+                              className="inline-flex items-center gap-1 text-indigo-400 hover:underline ml-auto">
+                              🔗 ลิงก์ดูสลิปของตัวเอง
+                            </button>
+                          )}
+                        </div>
+                      ) : !isReadOnly && (
+                        <div className="flex gap-2">
+                          <input
+                            type="url"
+                            value={batchDocLinks[p.id] ?? p.document_url ?? ''}
+                            onChange={e => setBatchDocLinks(prev => ({ ...prev, [p.id]: e.target.value }))}
+                            placeholder="แนบลิงก์สลิป (ถ้ามี)"
+                            className="flex-1 border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-green-400"
+                          />
+                          <button onClick={() => payOneFreelancer(p)}
+                            className="flex items-center gap-1 text-xs bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700 whitespace-nowrap">
+                            <Banknote size={12} /> โอนแล้ว
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+
+              {!isReadOnly && (
+                <button onClick={openNewFreelanceForm}
+                  className="w-full flex items-center justify-center gap-1.5 border-2 border-dashed border-indigo-200 text-indigo-500 px-4 py-3 rounded-xl text-sm font-medium hover:bg-indigo-50">
+                  <Plus size={14} /> เพิ่มงาน freelance
+                </button>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
       {showForm && (
-        <form onSubmit={editingPayslip ? handleUpdate : handleSubmit} className="bg-white rounded-xl border border-gray-100 p-6 shadow-sm space-y-5">
+        <form ref={formRef} onSubmit={editingPayslip ? handleUpdate : handleSubmit} className="bg-white rounded-xl border border-gray-100 p-6 shadow-sm space-y-5">
           <div className="flex items-center justify-between flex-wrap gap-2">
             <h3 className="font-semibold text-gray-800">{editingPayslip ? 'แก้ไขสลิป' : 'สร้างสลิปใหม่'}</h3>
             {editingPayslip
@@ -509,9 +1221,10 @@ export default function PayslipTab() {
                       className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">อีเมล *</label>
-                    <input required type="email" value={guestEmail} onChange={(e) => setGuestEmail(e.target.value)} placeholder="email@example.com"
+                    <label className="block text-sm font-medium text-gray-700 mb-1">อีเมล (ถ้ามี)</label>
+                    <input type="email" value={guestEmail} onChange={(e) => setGuestEmail(e.target.value)} placeholder="email@example.com"
                       className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+                    <p className="text-xs text-gray-400 mt-0.5">ไม่กรอกก็ได้ — ส่งลิงก์ยืนยันให้ Freelance กรอกข้อมูลเองได้</p>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">ประเภท</label>
@@ -854,22 +1567,91 @@ export default function PayslipTab() {
             </div>
           </div>
 
+          {form.transfer_date && (
+            <div className="bg-green-50 border border-green-200 rounded-lg px-3 py-2 text-sm text-green-700 font-medium">
+              ✅ จ่ายค่าบริการแล้ว เมื่อ {new Date(form.transfer_date).toLocaleDateString('th-TH')}
+            </div>
+          )}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
             <FField label="หมายเหตุจาก Admin" value={form.admin_note} onChange={(v) => setForm({ ...form, admin_note: v })} />
             <FField label="🗓 กำหนดจ่ายเงิน" value={form.due_date} onChange={(v) => setForm({ ...form, due_date: v })} type="date" />
             <FField label="วันที่โอนเงิน (ถ้าโอนแล้ว)" value={form.transfer_date} onChange={(v) => setForm({ ...form, transfer_date: v })} type="date" />
           </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">📎 ลิงก์เอกสารประกอบ</label>
+            <input
+              type="url"
+              value={form.document_url}
+              onChange={(e) => setForm({ ...form, document_url: e.target.value })}
+              placeholder="https://drive.google.com/... หรือ Dropbox, OneDrive ฯลฯ"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            />
+            <p className="text-xs text-gray-400 mt-0.5">เช่น สลิปเงิน, ใบโอน, Screenshot การโอน</p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">📄 ลิงก์เอกสารทำจ่าย</label>
+            <input
+              type="url"
+              value={form.payment_doc_url}
+              onChange={(e) => setForm({ ...form, payment_doc_url: e.target.value })}
+              placeholder="https://docs.google.com/... ใบเสนอราคา/ใบแจ้งหนี้/รายละเอียดงาน"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            />
+            <p className="text-xs text-gray-400 mt-0.5">เอกสารที่ใช้ประกอบการทำจ่าย เช่น ใบเสนอราคา, สรุปงาน, รายการคำนวณ</p>
+          </div>
+          {isFreelance && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">📧 อีเมลรับใบ 50 ทวิ (หัก ณ ที่จ่าย)</label>
+              <input
+                type="email"
+                value={form.wht_cert_email}
+                onChange={(e) => setForm({ ...form, wht_cert_email: e.target.value })}
+                placeholder="accounting@example.com"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              />
+              <p className="text-xs text-gray-400 mt-0.5">อีเมลที่ฝ่ายบัญชีจะใช้ส่งหนังสือรับรองการหักภาษี ณ ที่จ่าย (50 ทวิ)</p>
+            </div>
+          )}
+          {isFreelance && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">🪪 ลิงก์สำเนาบัตรประชาชน (Freelance)</label>
+                <input
+                  type="url"
+                  value={form.freelance_confirm_id_card_url}
+                  onChange={(e) => setForm({ ...form, freelance_confirm_id_card_url: e.target.value })}
+                  placeholder="https://drive.google.com/..."
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">🏦 ลิงก์สำเนา Book Bank (Freelance)</label>
+                <input
+                  type="url"
+                  value={form.freelance_confirm_bank_book_url}
+                  onChange={(e) => setForm({ ...form, freelance_confirm_bank_book_url: e.target.value })}
+                  placeholder="https://drive.google.com/..."
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                />
+              </div>
+              <p className="text-xs text-gray-400 -mt-1 sm:col-span-2">ถ้าแอดมินกรอกไว้แล้ว ลิงก์นี้จะแสดงเป็นค่าจริงในหน้ายืนยันของ Freelance โดยไม่ต้องกรอกซ้ำ</p>
+            </div>
+          )}
 
           {!editingPayslip && (
           <div className="flex items-center gap-2">
             <input
               id="send_email"
               type="checkbox"
-              checked={form.send_email}
+              checked={form.send_email && (!guestMode || !!guestEmail)}
+              disabled={guestMode && !guestEmail}
               onChange={(e) => setForm({ ...form, send_email: e.target.checked })}
               className="w-4 h-4 text-indigo-600"
             />
-            <label htmlFor="send_email" className="text-sm text-gray-700">ส่ง Email แจ้งพนักงานทันที</label>
+            <label htmlFor="send_email" className="text-sm text-gray-700">
+              ส่ง Email แจ้งพนักงานทันที
+              {guestMode && !guestEmail && <span className="text-gray-400"> (ไม่มีอีเมล — ใช้ลิงก์ยืนยันส่งให้แทน)</span>}
+            </label>
           </div>
           )}
 
@@ -894,7 +1676,39 @@ export default function PayslipTab() {
         </form>
       )}
 
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-x-auto">
+      {subTab === 'list' && payslips.length > 0 && (
+        <div className="grid grid-cols-3 gap-2 sm:gap-3">
+          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-3 flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center shrink-0">
+              <Wallet size={15} className="text-gray-500" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs text-gray-400 truncate">ยอดรวมทั้งหมด</p>
+              <p className="font-bold text-gray-800 text-sm sm:text-base truncate">{formatCurrency(listTotalAll)}</p>
+            </div>
+          </div>
+          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-3 flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-green-50 flex items-center justify-center shrink-0">
+              <CheckSquare size={15} className="text-green-500" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs text-gray-400 truncate">จ่ายแล้ว</p>
+              <p className="font-bold text-green-700 text-sm sm:text-base truncate">{formatCurrency(listTotalPaid)}</p>
+            </div>
+          </div>
+          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-3 flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center shrink-0">
+              <Banknote size={15} className="text-amber-500" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs text-gray-400 truncate">ยังต้องจ่าย {listUnpaidCount > 0 ? `(${listUnpaidCount})` : ''}</p>
+              <p className="font-bold text-amber-600 text-sm sm:text-base truncate">{formatCurrency(listTotalUnpaid)}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {subTab === 'list' && <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-x-auto">
         {loading ? (
           <p className="p-6 text-center text-gray-400">กำลังโหลด...</p>
         ) : payslips.length === 0 ? (
@@ -910,66 +1724,22 @@ export default function PayslipTab() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {payslips.map((p) => (
-                <tr key={p.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3">
-                    <p className="font-medium text-gray-800">{p.employee?.name ?? p.guest_name}</p>
-                    <p className="text-xs text-gray-400">{p.employee?.email ?? p.guest_email}</p>
-                  </td>
-                  <td className="px-4 py-3 text-gray-600">
-                    {formatPeriod(p.period_month, p.period_year)}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <p className="font-semibold text-gray-800">{formatCurrency(p.net_pay)}</p>
-                    {p.is_paid ? (
-                      <p className="text-xs text-green-600 font-medium">✅ จ่ายแล้ว {p.transfer_date ? new Date(p.transfer_date).toLocaleDateString('th-TH') : ''}</p>
-                    ) : p.due_date ? (
-                      <p className={`text-xs font-medium ${new Date(p.due_date) < new Date() ? 'text-red-500' : 'text-amber-500'}`}>
-                        🗓 ครบกำหนด {new Date(p.due_date).toLocaleDateString('th-TH')}
-                        {new Date(p.due_date) < new Date() ? ' ⚠️ เกินกำหนด' : ''}
-                      </p>
-                    ) : null}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center justify-center gap-1 flex-wrap">
-                      {!p.is_paid && (
-                        <button onClick={() => markPaid(p)} title="กดเมื่อจ่ายแล้ว"
-                          className="flex items-center gap-1 px-2 py-1 text-xs bg-green-500 text-white rounded-lg hover:bg-green-600 font-medium">
-                          <Banknote size={12} /> จ่ายแล้ว
-                        </button>
-                      )}
-                      <button onClick={() => setViewPayslip(p)} title="ดูสลิป"
-                        className="p-1.5 text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 rounded">
-                        <Eye size={14} />
-                      </button>
-                      <button onClick={() => startEdit(p)} title="แก้ไข"
-                        className="p-1.5 text-gray-500 hover:text-amber-600 hover:bg-amber-50 rounded">
-                        <Pencil size={14} />
-                      </button>
-                      <button onClick={() => resendEmail(p)} title="ส่งสลิป Email" disabled={sending === p.id}
-                        className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded disabled:opacity-40">
-                        <Send size={14} />
-                      </button>
-                      <button
-                        onClick={() => sendTransferConfirm(p)}
-                        title="ส่งยืนยันการโอนเงิน"
-                        disabled={confirmingSend === p.id}
-                        className="p-1.5 text-gray-500 hover:text-green-600 hover:bg-green-50 rounded disabled:opacity-40"
-                      >
-                        <Banknote size={14} />
-                      </button>
-                      <button onClick={() => deletePayslip(p.id)} title="ลบ" disabled={deleting === p.id}
-                        className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded disabled:opacity-40">
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  </td>
+              {fulltimePayslips.length > 0 && (
+                <tr className="bg-gray-50">
+                  <td colSpan={4} className="px-4 py-2 text-xs font-semibold text-gray-500">👥 พนักงานประจำ ({fulltimePayslips.length})</td>
                 </tr>
-              ))}
+              )}
+              {fulltimePayslips.map(renderPayslipRow)}
+              {freelancePayslipsList.length > 0 && (
+                <tr className="bg-gray-50">
+                  <td colSpan={4} className="px-4 py-2 text-xs font-semibold text-gray-500">🧑‍💻 Freelance ({freelancePayslipsList.length})</td>
+                </tr>
+              )}
+              {freelancePayslipsList.map(renderPayslipRow)}
             </tbody>
           </table>
         )}
-      </div>
+      </div>}
 
       {/* View / Export modal */}
       {viewPayslip && (
@@ -982,16 +1752,18 @@ export default function PayslipTab() {
               </button>
             </div>
             <PayslipCard payslip={viewPayslip} showExport />
-            <div className="mt-3 flex gap-2">
-              <button onClick={() => startEdit(viewPayslip)}
-                className="flex items-center gap-1 bg-white text-indigo-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-50">
-                <Pencil size={14} /> แก้ไขสลิปนี้
-              </button>
-              <button onClick={() => { deletePayslip(viewPayslip.id); setViewPayslip(null) }}
-                className="flex items-center gap-1 bg-white text-red-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-red-50">
-                <Trash2 size={14} /> ลบสลิปนี้
-              </button>
-            </div>
+            {!isReadOnly && (
+              <div className="mt-3 flex gap-2">
+                <button onClick={() => startEdit(viewPayslip)}
+                  className="flex items-center gap-1 bg-white text-indigo-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-50">
+                  <Pencil size={14} /> แก้ไขสลิปนี้
+                </button>
+                <button onClick={() => { deletePayslip(viewPayslip.id); setViewPayslip(null) }}
+                  className="flex items-center gap-1 bg-white text-red-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-red-50">
+                  <Trash2 size={14} /> ลบสลิปนี้
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

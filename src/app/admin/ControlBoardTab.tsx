@@ -150,13 +150,13 @@ export default function ControlBoardTab() {
   function financeIncome(m: number) {
     return incomeRecs.filter(r => r.month === m).reduce((s,r) => s+r.amount, 0)
   }
-  // นับจำนวน income records ที่มี source ประเภทนั้น
+  // นับจำนวนแคมเปญที่ขายได้ตาม service type (จาก SALES — New Client + Existing Client)
   function serviceCount(type: string, m: number) {
-    return incomeRecs.filter(r => r.month === m && r.sources.includes(type)).length
+    return campaigns.filter(c => c.month === m && c.service_type === type).length
   }
-  // รายได้จาก income records ที่มี source ประเภทนั้น
+  // ยอดขายแคมเปญตาม service type (จาก SALES — New Client + Existing Client)
   function serviceRevenue(type: string, m: number) {
-    return incomeRecs.filter(r => r.month === m && r.sources.includes(type)).reduce((s,r) => s+r.amount, 0)
+    return campaigns.filter(c => c.month === m && c.service_type === type).reduce((s,c) => s+c.revenue, 0)
   }
   function financeExp(cat: string, m: number) {
     // map control-board category keys → Finance expense_records categories
@@ -384,13 +384,15 @@ export default function ControlBoardTab() {
   const ownerSalArr  = m12.map(m => ownerSlips(m).reduce((s,p)=>s+p.base_salary,0))
   const ownerIncArr  = m12.map(m => ownerSlips(m).reduce((s,p)=>s+p.incentive,0))
   const ownerWhtArr  = m12.map(m => ownerSlips(m).reduce((s,p)=>s+p.withholding_tax,0))
-  const ownerTotArr  = m12.map((_,i)=>ownerSalArr[i]+ownerIncArr[i]-ownerWhtArr[i])
+  // ใช้ net_pay (ยอดโอนจริง) เป็นยอดรวม เพื่อให้ตรงกับหน้าการเงิน (รวมหักประกันสังคม/หักอื่นๆ ด้วย)
+  const ownerTotArr  = m12.map(m => ownerSlips(m).reduce((s,p)=>s+p.net_pay,0))
 
   // Staff (fulltime non-owner)
   const staffSalArr  = m12.map(m => staffSlips(m).reduce((s,p)=>s+p.base_salary,0))
   const staffOtArr   = m12.map(m => staffSlips(m).reduce((s,p)=>s+p.ot_amount+p.incentive,0))
+  const staffNetArr  = m12.map(m => staffSlips(m).reduce((s,p)=>s+p.net_pay,0))
   const flArr        = m12.map(m => freelanceSlips(m).reduce((s,p)=>s+p.net_pay,0))
-  const staffTotArr  = m12.map((_,i)=>ownerTotArr[i]+staffSalArr[i]+staffOtArr[i]+flArr[i])
+  const staffTotArr  = m12.map((_,i)=>ownerTotArr[i]+staffNetArr[i]+flArr[i])
 
   // KBIZ — kbiz_income auto-synced from Finance income_records
   const kbizIncArr   = m12.map((_,i) => financeIncome(i+1) || entryVal('kbiz_income', i+1))
@@ -404,15 +406,13 @@ export default function ControlBoardTab() {
                    'mkt_ads','mkt_ops','office_rent','office_utils','office_software','office_domain','office_equip',
                    'tax_vat_wht','petty_cash','other_expense']
 
-  // รายจ่ายทั้งหมด = staff (จาก payslips) + Finance expense_records ทั้งหมด
-  // ยกเว้น salary/freelance ที่อยู่ใน payslips แล้ว → ไม่ double count
-  const PAYROLL_CATS = new Set(['salary', 'freelance'])
-  function financeExpTotal(m: number) {
-    return expenseRecs
-      .filter(r => r.month === m && !PAYROLL_CATS.has(r.category))
-      .reduce((s, r) => s + r.amount, 0)
+  // รายจ่ายทั้งหมด = ผลรวม net_pay ของสลิปทั้งหมด + expense_records ทั้งหมดของเดือนนั้น
+  // (สูตรเดียวกับหน้าการเงิน เพื่อให้ยอดตรงกันเสมอ)
+  function financeExpAll(m: number) {
+    return expenseRecs.filter(r => r.month === m).reduce((s, r) => s + r.amount, 0)
   }
-  const totalExpArr = m12.map((_,i) => staffTotArr[i] + financeExpTotal(i+1))
+  const totalPayrollArr = m12.map(m => slipsForMonth(m).reduce((s,p)=>s+p.net_pay,0))
+  const totalExpArr = m12.map((_,i) => totalPayrollArr[i] + financeExpAll(i+1))
 
   // ยอดยกมา: เดือน 1 = กรอกเอง, เดือน 2+ = คงเหลือเดือนก่อนหน้า (auto)
   const kbizBalArr: number[] = []
@@ -629,6 +629,7 @@ export default function ControlBoardTab() {
       {view === 'analytics' && (
         <ControlBoardAnalytics
           year={year}
+          effectiveMonths={year === now.getFullYear() ? now.getMonth() + 1 : 12}
           totRevArr={totRevArr} totProfArr={totProfArr}
           totalExpArr={totalExpArr} staffTotArr={staffTotArr}
           kbizBalArr={kbizBalArr}
@@ -908,7 +909,7 @@ export default function ControlBoardTab() {
               })()}
 
               {/* ═══ SECTION: Services Sold ══════════════════════════════════ */}
-              <SectionHeader id="services" label="🛒 Services ที่ขายออก (จาก Finance tab)" color="bg-violet-50 text-violet-800"/>
+              <SectionHeader id="services" label="🛒 Services ที่ขายออก (จากแคมเปญ SALES)" color="bg-violet-50 text-violet-800"/>
               {!collapsed['services'] && serviceRows.map(s=>{
                 const hasData = sum(s.countArr) > 0
                 if (!hasData) return null

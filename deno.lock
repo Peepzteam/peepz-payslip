@@ -11,6 +11,7 @@
   "workspace": {
     "packageJson": {
       "dependencies": [
+        "npm:@netlify/functions@^5.3.0",
         "npm:@netlify/plugin-nextjs@^5.15.11",
         "npm:@react-pdf/renderer@^4.5.1",
         "npm:@supabase/ssr@~0.10.3",
@@ -29,6 +30,7 @@
         "npm:nodemailer@^8.0.10",
         "npm:react-dom@19.2.4",
         "npm:react@19.2.4",
+        "npm:recharts@^3.8.1",
         "npm:resend@^6.12.4",
         "npm:tailwindcss@4",
         "npm:typescript@5",

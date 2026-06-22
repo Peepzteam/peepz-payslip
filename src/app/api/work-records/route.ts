@@ -17,6 +17,8 @@ export async function GET(req: NextRequest) {
     const lastDay = new Date(Number(year), Number(month), 0).getDate()
     const end = `${year}-${String(month).padStart(2, '0')}-${lastDay}`
     query = query.gte('date', start).lte('date', end)
+  } else if (year) {
+    query = query.gte('date', `${year}-01-01`).lte('date', `${year}-12-31`)
   }
   if (employee_id) query = query.eq('employee_id', employee_id)
 

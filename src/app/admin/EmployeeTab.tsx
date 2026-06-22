@@ -6,7 +6,8 @@ import { Upload, UserPlus, Download, Pencil, X, Check, Trash2, ChevronDown, Chev
 
 const EMPTY_FORM = {
   name: '', email: '', employee_code: '', type: 'fulltime',
-  department: '', position: '', base_salary: '', start_date: '', is_owner: false
+  department: '', position: '', base_salary: '', start_date: '', birth_date: '', is_owner: false,
+  doc_id_card_url: '', doc_bank_book_url: '',
 }
 
 function getProbationStatus(start_date: string | null): { label: string; color: string; detail: string } | null {
@@ -29,7 +30,7 @@ function formatDateTH(dateStr: string | null) {
   return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear() + 543}`
 }
 
-export default function EmployeeTab() {
+export default function EmployeeTab({ isReadOnly = false }: { isReadOnly?: boolean }) {
   const [employees, setEmployees] = useState<Employee[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
@@ -76,7 +77,7 @@ export default function EmployeeTab() {
     await fetch('/api/employees', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...form, base_salary: Number(form.base_salary) || null, start_date: form.start_date || null }),
+      body: JSON.stringify({ ...form, base_salary: Number(form.base_salary) || null, start_date: form.start_date || null, birth_date: form.birth_date || null }),
     })
     setShowForm(false)
     setForm(EMPTY_FORM)
@@ -94,7 +95,10 @@ export default function EmployeeTab() {
       position: emp.position || '',
       base_salary: emp.base_salary?.toString() || '',
       start_date: emp.start_date || '',
+      birth_date: emp.birth_date || '',
       is_owner: emp.is_owner ?? false,
+      doc_id_card_url: emp.doc_id_card_url || '',
+      doc_bank_book_url: emp.doc_bank_book_url || '',
     })
   }
 
@@ -118,7 +122,7 @@ export default function EmployeeTab() {
       const res = await fetch(`/api/employees/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...editForm, base_salary: Number(editForm.base_salary) || null, start_date: editForm.start_date || null }),
+        body: JSON.stringify({ ...editForm, base_salary: Number(editForm.base_salary) || null, start_date: editForm.start_date || null, birth_date: editForm.birth_date || null }),
       })
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: 'Unknown error' }))
@@ -196,13 +200,17 @@ export default function EmployeeTab() {
           <button onClick={downloadTemplate} className="flex items-center gap-1 text-sm border border-gray-300 px-3 py-2 rounded-lg hover:bg-gray-50">
             <Download size={15} /> Template
           </button>
-          <label className="flex items-center gap-1 text-sm border border-gray-300 px-3 py-2 rounded-lg hover:bg-gray-50 cursor-pointer">
-            <Upload size={15} /> Import CSV
-            <input ref={fileRef} type="file" accept=".xlsx,.csv" className="hidden" onChange={handleImport} />
-          </label>
-          <button onClick={() => { setShowForm(!showForm); setEditingId(null) }} className="flex items-center gap-1 text-sm bg-indigo-600 text-white px-3 py-2 rounded-lg hover:bg-indigo-700">
-            <UserPlus size={15} /> เพิ่มพนักงาน
-          </button>
+          {!isReadOnly && (
+            <>
+              <label className="flex items-center gap-1 text-sm border border-gray-300 px-3 py-2 rounded-lg hover:bg-gray-50 cursor-pointer">
+                <Upload size={15} /> Import CSV
+                <input ref={fileRef} type="file" accept=".xlsx,.csv" className="hidden" onChange={handleImport} />
+              </label>
+              <button onClick={() => { setShowForm(!showForm); setEditingId(null) }} className="flex items-center gap-1 text-sm bg-indigo-600 text-white px-3 py-2 rounded-lg hover:bg-indigo-700">
+                <UserPlus size={15} /> เพิ่มพนักงาน
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -228,6 +236,7 @@ export default function EmployeeTab() {
             <Field label="แผนก" value={form.department} onChange={(v) => setForm({ ...form, department: v })} />
             <Field label="ตำแหน่ง" value={form.position} onChange={(v) => setForm({ ...form, position: v })} />
             <Field label="📅 วันเริ่มงาน" type="date" value={form.start_date} onChange={(v) => setForm({ ...form, start_date: v })} />
+            <Field label="🎂 วันเกิด" type="date" value={form.birth_date} onChange={(v) => setForm({ ...form, birth_date: v })} />
             <Field label="เงินเดือนเริ่มต้น" type="number" value={form.base_salary} onChange={(v) => setForm({ ...form, base_salary: v })} />
           </div>
           <div className="flex gap-2 pt-2">
@@ -281,7 +290,28 @@ export default function EmployeeTab() {
                             <Field label="แผนก" value={editForm.department} onChange={(v) => setEditForm({ ...editForm, department: v })} />
                             <Field label="ตำแหน่ง" value={editForm.position} onChange={(v) => setEditForm({ ...editForm, position: v })} />
                             <Field label="📅 วันเริ่มงาน" type="date" value={editForm.start_date} onChange={(v) => setEditForm({ ...editForm, start_date: v })} />
+                            <Field label="🎂 วันเกิด" type="date" value={editForm.birth_date} onChange={(v) => setEditForm({ ...editForm, birth_date: v })} />
                             <Field label="เงินเดือน (ปัจจุบัน)" type="number" value={editForm.base_salary} onChange={(v) => setEditForm({ ...editForm, base_salary: v })} />
+                          </div>
+                          {/* เอกสารถาวร */}
+                          <div className="border-t border-gray-100 pt-3 mt-1 space-y-2">
+                            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">📂 เอกสารถาวร (ลิงก์เก็บไว้ตลอด)</p>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                              <div>
+                                <label className="block text-xs font-medium text-gray-600 mb-1">🪪 สำเนาบัตรประชาชน</label>
+                                <input type="url" value={editForm.doc_id_card_url}
+                                  onChange={e => setEditForm({ ...editForm, doc_id_card_url: e.target.value })}
+                                  placeholder="https://drive.google.com/..."
+                                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+                              </div>
+                              <div>
+                                <label className="block text-xs font-medium text-gray-600 mb-1">🏦 สำเนาบัญชีธนาคาร (Book Bank)</label>
+                                <input type="url" value={editForm.doc_bank_book_url}
+                                  onChange={e => setEditForm({ ...editForm, doc_bank_book_url: e.target.value })}
+                                  placeholder="https://drive.google.com/..."
+                                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+                              </div>
+                            </div>
                           </div>
                           <div className="mb-3">
                             <label className="flex items-center gap-2 cursor-pointer w-fit">
@@ -310,6 +340,22 @@ export default function EmployeeTab() {
                           <p className="font-medium text-gray-800">{emp.name}</p>
                           <p className="text-xs text-gray-400">{emp.email}</p>
                           {emp.employee_code && <p className="text-xs text-gray-400">{emp.employee_code}</p>}
+                          {(emp.doc_id_card_url || emp.doc_bank_book_url) && (
+                            <div className="flex gap-2 mt-1 flex-wrap">
+                              {emp.doc_id_card_url && (
+                                <a href={emp.doc_id_card_url} target="_blank" rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 text-xs text-blue-500 hover:text-blue-700 hover:underline">
+                                  🪪 บัตรประชาชน
+                                </a>
+                              )}
+                              {emp.doc_bank_book_url && (
+                                <a href={emp.doc_bank_book_url} target="_blank" rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 text-xs text-blue-500 hover:text-blue-700 hover:underline">
+                                  🏦 Book Bank
+                                </a>
+                              )}
+                            </div>
+                          )}
                         </td>
                         <td className="px-4 py-3 text-gray-600">
                           {emp.department && <p>{emp.department}</p>}
@@ -325,6 +371,9 @@ export default function EmployeeTab() {
                         </td>
                         <td className="px-4 py-3">
                           <p className="text-xs text-gray-500">{formatDateTH(emp.start_date)}</p>
+                          {emp.birth_date && (
+                            <p className="text-xs text-gray-400">🎂 {formatDateTH(emp.birth_date)}</p>
+                          )}
                           {probation && emp.type === 'fulltime' && (
                             <span className={`text-xs px-2 py-0.5 rounded-full mt-1 inline-block ${probation.color}`}>
                               {probation.label}
@@ -344,14 +393,18 @@ export default function EmployeeTab() {
                               title="ประวัติเงินเดือน">
                               <History size={14} />
                             </button>
-                            <button onClick={() => { startEdit(emp); setShowForm(false); setExpandedId(null) }}
-                              className="text-indigo-500 hover:text-indigo-700 p-1.5 rounded hover:bg-indigo-50" title="แก้ไข">
-                              <Pencil size={14} />
-                            </button>
-                            <button onClick={() => deleteEmployee(emp.id, emp.name)}
-                              className="text-gray-400 hover:text-red-600 p-1.5 rounded hover:bg-red-50" title="ลบ">
-                              <Trash2 size={14} />
-                            </button>
+                            {!isReadOnly && (
+                              <>
+                                <button onClick={() => { startEdit(emp); setShowForm(false); setExpandedId(null) }}
+                                  className="text-indigo-500 hover:text-indigo-700 p-1.5 rounded hover:bg-indigo-50" title="แก้ไข">
+                                  <Pencil size={14} />
+                                </button>
+                                <button onClick={() => deleteEmployee(emp.id, emp.name)}
+                                  className="text-gray-400 hover:text-red-600 p-1.5 rounded hover:bg-red-50" title="ลบ">
+                                  <Trash2 size={14} />
+                                </button>
+                              </>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -369,10 +422,12 @@ export default function EmployeeTab() {
                                 <span className="text-xs text-gray-400">เริ่มงาน {formatDateTH(emp.start_date)}</span>
                               )}
                             </div>
-                            <button onClick={() => setAddingSalary(addingSalary === emp.id ? null : emp.id)}
-                              className="flex items-center gap-1 text-xs bg-indigo-600 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-700">
-                              <Plus size={12} /> บันทึกการปรับเงินเดือน
-                            </button>
+                            {!isReadOnly && (
+                              <button onClick={() => setAddingSalary(addingSalary === emp.id ? null : emp.id)}
+                                className="flex items-center gap-1 text-xs bg-indigo-600 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-700">
+                                <Plus size={12} /> บันทึกการปรับเงินเดือน
+                              </button>
+                            )}
                           </div>
 
                           {/* Add salary form */}

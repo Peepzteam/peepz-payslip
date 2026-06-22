@@ -44,6 +44,9 @@ export async function POST(req: NextRequest) {
   body.total_deduction = deduct
   body.net_pay = gross - deduct
 
+  const username = req.cookies.get('admin_username')?.value ?? null
+  if (username) body.created_by = username
+
   const { data, error } = await supabaseAdmin
     .from('payslips')
     .insert(body)

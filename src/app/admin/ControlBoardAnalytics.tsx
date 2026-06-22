@@ -9,6 +9,7 @@ import { formatCurrency } from '@/lib/utils'
 // ─── Types ───────────────────────────────────────────────────────────────────
 interface Props {
   year: number
+  effectiveMonths?: number  // 1-12, default 12 (วิเคราะห์ถึงเดือนนี้เมื่อเป็นปีปัจจุบัน)
   totRevArr: number[]
   totProfArr: number[]
   totalExpArr: number[]
@@ -30,45 +31,59 @@ function sum(arr: number[]) { return arr.reduce((s, v) => s + v, 0) }
 
 // ─── Insight engine ──────────────────────────────────────────────────────────
 function buildInsights(p: Props) {
-  const { totRevArr, totProfArr, totalExpArr, staffTotArr, kbizBalArr, newRevArr, exRevArr, serviceRows, newCamps, exCamps } = p
+  const { totRevArr: _totRevArr, totProfArr: _totProfArr, totalExpArr: _totalExpArr,
+          staffTotArr: _staffTotArr, kbizBalArr: _kbizBalArr,
+          newRevArr: _newRevArr, exRevArr: _exRevArr,
+          serviceRows: _serviceRows, newCamps, exCamps } = p
+  const em = p.effectiveMonths ?? 12  // ตัดข้อมูลแค่ถึงเดือนปัจจุบัน
+
+  // Slice ทุก array เฉพาะเดือนที่ถึงแล้ว
+  const totRevArr    = _totRevArr.slice(0, em)
+  const totProfArr   = _totProfArr.slice(0, em)
+  const totalExpArr  = _totalExpArr.slice(0, em)
+  const staffTotArr  = _staffTotArr.slice(0, em)
+  const kbizBalArr   = _kbizBalArr.slice(0, em)
+  const newRevArr    = _newRevArr.slice(0, em)
+  const exRevArr     = _exRevArr.slice(0, em)
+  const serviceRows  = _serviceRows.map(s => ({
+    ...s,
+    revenueArr: s.revenueArr.slice(0, em),
+    countArr:   s.countArr.slice(0, em),
+  }))
 
   const activeMonths = totRevArr.filter(v => v > 0).length
   const totalRev   = sum(totRevArr)
   const totalProfit = sum(totProfArr)
   const totalExp   = sum(totalExpArr)
-  const avgRev     = activeMonths > 0 ? totalRev / activeMonths : 0
   const profitMargin = pct(totalProfit, totalRev)
   const staffRatio = totalExp > 0 ? pct(sum(staffTotArr), totalExp) : 0
 
-  // Growth: compare H2 vs H1 revenue
-  const h1Rev = sum(totRevArr.slice(0, 6))
-  const h2Rev = sum(totRevArr.slice(6, 12))
-  const growthH = h1Rev > 0 ? pct(h2Rev - h1Rev, h1Rev) : null
+  // Growth: เปรียบ 3 เดือนหลังสุด vs 3 เดือนก่อนหน้า (แทน H1/H2 ซึ่งใช้ไม่ได้กับปีที่ยังไม่ครบ)
+  let growthH: number | null = null
+  if (em >= 4) {
+    const half = Math.floor(em / 2)
+    const prevHalf = sum(totRevArr.slice(0, half))
+    const lastHalf = sum(totRevArr.slice(half, em))
+    growthH = prevHalf > 0 ? pct(lastHalf - prevHalf, prevHalf) : null
+  }
+  const halfLabel = em >= 6 ? (em === 12 ? 'H2 vs H1' : `${em/2} เดือนหลัง vs แรก`) : `${Math.floor(em/2)} เดือนหลัง vs แรก`
 
-  // Best month
-  const bestMonthIdx = totRevArr.indexOf(Math.max(...totRevArr))
   const worstProfitIdx = totProfArr.findIndex(v => v < 0)
 
-  // New vs existing client ratio
   const totalNewRev = sum(newRevArr)
   const totalExRev  = sum(exRevArr)
   const newRatio    = pct(totalNewRev, totalRev)
 
-  // Top service
   const topService = [...serviceRows].sort((a, b) => sum(b.revenueArr) - sum(a.revenueArr))[0]
-
-  // Negative cash flow months
   const negativeCashMonths = kbizBalArr.filter(v => v < 0).length
 
-  // Consecutive growth
   let consecutiveGrowth = 0
   for (let i = totRevArr.length - 1; i > 0; i--) {
     if (totRevArr[i] > 0 && totRevArr[i] > totRevArr[i - 1]) consecutiveGrowth++
     else break
   }
 
-  // Total campaigns
-  const totalCamps = newCamps.reduce((s, c) => s + c.length, 0) + exCamps.reduce((s, c) => s + c.length, 0)
+  const totalCamps = newCamps.slice(0, em).reduce((s, c) => s + c.length, 0) + exCamps.slice(0, em).reduce((s, c) => s + c.length, 0)
   const avgRevenuePerCamp = totalCamps > 0 ? totalRev / totalCamps : 0
 
   const strengths: string[] = []
@@ -84,17 +99,17 @@ function buildInsights(p: Props) {
   if (newRatio >= 40) strengths.push(`🆕 ลูกค้าใหม่ ${newRatio}% ของยอดขาย — ฐานลูกค้ากำลังขยาย`)
   if (totalExRev > totalNewRev) strengths.push(`🔄 ลูกค้าเก่า loyal — repeat business สูง (${pct(totalExRev, totalRev)}% ของรายได้)`)
 
-  if (topService && sum(topService.revenueArr) > 0) strengths.push(`⭐ ${topService.label} เป็น service หลัก — คิดเป็น ${pct(sum(topService.revenueArr), totalRev)}% ของยอดขายทั้งหมด`)
+  if (topService && sum(topService.revenueArr) > 0) strengths.push(`⭐ ${topService.label} เป็น service หลัก — คิดเป็น ${pct(sum(topService.revenueArr), totalRev)}% ของยอดขาย`)
 
-  if (growthH !== null && growthH > 10) strengths.push(`📊 ครึ่งปีหลังเติบโต +${growthH}% เทียบครึ่งปีแรก`)
+  if (growthH !== null && growthH > 10) strengths.push(`📊 ${halfLabel}: เติบโต +${growthH}%`)
 
   if (negativeCashMonths === 0 && activeMonths > 0) strengths.push(`💰 Cash flow เป็นบวกทุกเดือนที่มีรายได้ — สภาพคล่องแข็งแกร่ง`)
 
   // ── Focus ──
-  if (newRatio < 30 && activeMonths > 3) focus.push(`🎯 เพิ่ม New Client — ปัจจุบันลูกค้าใหม่คิดเป็นแค่ ${newRatio}% พยายามเพิ่มเป็น 40%+`)
-  if (staffRatio > 60) focus.push(`👥 ค่าใช้จ่ายพนักงาน ${staffRatio}% ของ total cost — ควรดูว่าเพิ่มรายได้ได้อีกโดยไม่เพิ่มทีม`)
-  if (profitMargin < 15 && profitMargin > 0) focus.push(`💹 พัฒนา Profit margin ปัจจุบัน ${profitMargin}% — ทบทวนต้นทุนต่องาน หรือขึ้นราคา`)
-  if (avgRevenuePerCamp > 0) focus.push(`📋 Average revenue ต่อแคมเปญ ${fmt(avgRevenuePerCamp)} — หาทางเพิ่ม deal size หรือ upsell`)
+  if (newRatio < 30 && activeMonths > 3) focus.push(`🎯 เพิ่ม New Client — ปัจจุบันลูกค้าใหม่แค่ ${newRatio}% พยายามเพิ่มเป็น 40%+`)
+  if (staffRatio > 60) focus.push(`👥 ค่าใช้จ่ายพนักงาน ${staffRatio}% ของ total cost — ดูว่าเพิ่มรายได้ได้โดยไม่เพิ่มทีม`)
+  if (profitMargin < 15 && profitMargin > 0) focus.push(`💹 พัฒนา Profit margin ปัจจุบัน ${profitMargin}% — ทบทวนต้นทุน หรือขึ้นราคา`)
+  if (avgRevenuePerCamp > 0) focus.push(`📋 Average revenue/แคมเปญ ${fmt(avgRevenuePerCamp)} — หาทาง upsell หรือเพิ่ม deal size`)
 
   const secondService = [...serviceRows].filter(s => sum(s.revenueArr) > 0).sort((a, b) => sum(b.revenueArr) - sum(a.revenueArr))[1]
   if (secondService && sum(secondService.revenueArr) > 0) {
@@ -102,28 +117,21 @@ function buildInsights(p: Props) {
     if (gap > 40) focus.push(`🌱 ขยาย ${secondService.label} — ยังห่างจาก service หลักมาก มีโอกาสเติบโต`)
   }
 
-  if (growthH !== null && growthH < 0) focus.push(`📉 ยอดขายครึ่งปีหลังลด ${Math.abs(growthH)}% — วางแผน pipeline ให้แน่นขึ้น`)
+  if (growthH !== null && growthH < 0) focus.push(`📉 ${halfLabel}: ยอดขายลด ${Math.abs(growthH)}% — วางแผน pipeline ให้แน่นขึ้น`)
 
   // ── Warnings ──
   if (profitMargin < 0) warnings.push(`🚨 Profit margin ติดลบ ${Math.abs(profitMargin)}% — รายจ่ายเกินรายรับ ต้องแก้ด่วน`)
   if (worstProfitIdx >= 0) warnings.push(`⚠️ ${MONTHS_SHORT[worstProfitIdx]} มีกำไรติดลบ ${fmt(totProfArr[worstProfitIdx])} — ตรวจสอบต้นทุนเดือนนั้น`)
   if (negativeCashMonths > 0) warnings.push(`💸 ${negativeCashMonths} เดือนที่ cash flow ติดลบ — ระวังสภาพคล่อง`)
   if (staffRatio > 70) warnings.push(`👤 ค่าพนักงาน ${staffRatio}% ของต้นทุนทั้งหมด — สูงเกินไป อาจกระทบ scalability`)
-
-  const lastActiveIdx = totRevArr.reduce((last, v, i) => (v > 0 ? i : last), -1)
-  if (lastActiveIdx >= 0 && lastActiveIdx < 9) {
-    const emptyMonths = 11 - lastActiveIdx
-    if (emptyMonths >= 2) warnings.push(`📭 ยังไม่มีข้อมูลอีก ${emptyMonths} เดือน — อย่าลืมบันทึกให้ครบ`)
-  }
-
   if (newRatio > 80) warnings.push(`⚠️ ลูกค้าใหม่สูงมาก ${newRatio}% — ยังไม่มี recurring revenue ที่มั่นคง`)
 
   // fallbacks
-  if (strengths.length === 0 && activeMonths > 0) strengths.push('📊 มีข้อมูลแล้ว — ยังต้องรอให้ครบรอบปีเพื่อวิเคราะห์ได้ชัดขึ้น')
+  if (strengths.length === 0 && activeMonths > 0) strengths.push('📊 มีข้อมูลแล้ว — เพิ่มข้อมูลให้ครบขึ้นเพื่อวิเคราะห์ได้ชัดขึ้น')
   if (focus.length === 0) focus.push('💡 เพิ่มข้อมูลให้ครบขึ้น เพื่อให้ระบบวิเคราะห์ได้ละเอียดกว่านี้')
   if (warnings.length === 0 && activeMonths > 0) warnings.push('✅ ยังไม่พบสัญญาณเตือนที่น่ากังวล — คงเส้นคงวาต่อไป')
 
-  return { strengths, focus, warnings, stats: { totalRev, totalProfit, profitMargin, activeMonths, totalCamps, avgRevenuePerCamp, newRatio, growthH } }
+  return { strengths, focus, warnings, stats: { totalRev, totalProfit, profitMargin, activeMonths, totalCamps, avgRevenuePerCamp, newRatio, growthH, halfLabel } }
 }
 
 // ─── Custom Tooltip ──────────────────────────────────────────────────────────
@@ -141,7 +149,25 @@ function CustomTooltip({ active, payload, label }: { active?: boolean; payload?:
 
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function ControlBoardAnalytics(props: Props) {
-  const { year, totRevArr, totProfArr, totalExpArr, staffTotArr, kbizBalArr, newRevArr, exRevArr, serviceRows } = props
+  const { year, totRevArr: _totRevArr, totProfArr: _totProfArr, totalExpArr: _totalExpArr,
+          staffTotArr: _staffTotArr, kbizBalArr: _kbizBalArr,
+          newRevArr: _newRevArr, exRevArr: _exRevArr, serviceRows: _serviceRows } = props
+  const em = props.effectiveMonths ?? 12  // จำนวนเดือนที่วิเคราะห์
+
+  // Slice ข้อมูลแค่ถึงเดือนปัจจุบัน
+  const totRevArr   = _totRevArr.slice(0, em)
+  const totProfArr  = _totProfArr.slice(0, em)
+  const totalExpArr = _totalExpArr.slice(0, em)
+  const staffTotArr = _staffTotArr.slice(0, em)
+  const kbizBalArr  = _kbizBalArr.slice(0, em)
+  const newRevArr   = _newRevArr.slice(0, em)
+  const exRevArr    = _exRevArr.slice(0, em)
+  const serviceRows = _serviceRows.map(s => ({
+    ...s,
+    revenueArr: s.revenueArr.slice(0, em),
+    countArr:   s.countArr.slice(0, em),
+  }))
+  const monthLabels = MONTHS_SHORT.slice(0, em)
 
   const activeMonths = totRevArr.filter(v => v > 0).length
   if (activeMonths === 0) {
@@ -154,8 +180,8 @@ export default function ControlBoardAnalytics(props: Props) {
 
   const { strengths, focus, warnings, stats } = buildInsights(props)
 
-  // ── Chart data ──
-  const monthlyData = MONTHS_SHORT.map((m, i) => ({
+  // ── Chart data (ใช้ monthLabels ที่ slice แล้ว) ──
+  const monthlyData = monthLabels.map((m, i) => ({
     month: m,
     ยอดขาย: totRevArr[i],
     กำไร: totProfArr[i],
@@ -163,7 +189,7 @@ export default function ControlBoardAnalytics(props: Props) {
     'Cash flow': kbizBalArr[i],
   }))
 
-  const revenueSourceData = MONTHS_SHORT.map((m, i) => ({
+  const revenueSourceData = monthLabels.map((m, i) => ({
     month: m,
     'ลูกค้าใหม่': newRevArr[i],
     'ลูกค้าเก่า': exRevArr[i],
@@ -180,22 +206,29 @@ export default function ControlBoardAnalytics(props: Props) {
   ].filter(d => d.value > 0)
 
   // Radar: month score (0-100 based on profitability)
-  const radarData = MONTHS_SHORT.map((m, i) => {
+  const radarData = monthLabels.map((m, i) => {
     const rev = totRevArr[i]
     const prof = totProfArr[i]
     const margin = rev > 0 ? pct(prof, rev) : 0
     return { month: m, คะแนน: Math.max(0, Math.min(100, margin + 50)) }
-  }).filter(d => totRevArr[MONTHS_SHORT.indexOf(d.month)] > 0)
+  }).filter((_, i) => totRevArr[i] > 0)
 
   return (
     <div className="space-y-5">
+      {/* ── YTD label ── */}
+      {em < 12 && (
+        <div className="flex items-center gap-2 text-xs text-indigo-600 bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-2">
+          <span>📅</span>
+          <span>วิเคราะห์ <strong>ม.ค. – {MONTHS_SHORT[em - 1]}</strong> {year + 543} (YTD {em} เดือน)</span>
+        </div>
+      )}
       {/* ── KPI Summary ── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
           { label: 'ยอดขายรวม', value: fmt(stats.totalRev), sub: `${activeMonths} เดือนที่มีข้อมูล`, color: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
           { label: 'กำไรสุทธิรวม', value: fmt(stats.totalProfit), sub: `Margin ${stats.profitMargin}%`, color: stats.totalProfit >= 0 ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : 'bg-red-50 text-red-700 border-red-200' },
           { label: 'แคมเปญทั้งหมด', value: `${stats.totalCamps} งาน`, sub: `เฉลี่ย ${fmt(stats.avgRevenuePerCamp)}/งาน`, color: 'bg-violet-50 text-violet-700 border-violet-200' },
-          { label: 'ลูกค้าใหม่', value: `${stats.newRatio}%`, sub: stats.growthH !== null ? `H2 vs H1: ${stats.growthH > 0 ? '+' : ''}${stats.growthH}%` : 'ของยอดขายทั้งหมด', color: 'bg-amber-50 text-amber-700 border-amber-200' },
+          { label: 'ลูกค้าใหม่', value: `${stats.newRatio}%`, sub: stats.growthH !== null ? `${stats.halfLabel}: ${stats.growthH > 0 ? '+' : ''}${stats.growthH}%` : 'ของยอดขายทั้งหมด', color: 'bg-amber-50 text-amber-700 border-amber-200' },
         ].map(k => (
           <div key={k.label} className={`rounded-xl border p-4 ${k.color}`}>
             <p className="text-xs font-medium opacity-70">{k.label}</p>

@@ -11,8 +11,11 @@ export interface Employee {
   position: string | null
   base_salary: number | null
   start_date: string | null
+  birth_date: string | null
   is_active: boolean
   is_owner: boolean
+  doc_id_card_url: string | null
+  doc_bank_book_url: string | null
   created_at: string
 }
 
@@ -88,10 +91,17 @@ export interface Payslip {
   transfer_date: string | null
   due_date: string | null
   is_paid: boolean
+  document_url: string | null
+  payment_doc_url: string | null
+  wht_cert_email: string | null
+  freelance_confirmed_at: string | null
+  freelance_confirm_id_card_url: string | null
+  freelance_confirm_bank_book_url: string | null
   line_items: LineItem[] | null
   ot_items: OtItem[] | null
   incentive_items: IncentiveItem[] | null
   created_at: string
+  created_by: string | null
   employee?: Employee
 }
 

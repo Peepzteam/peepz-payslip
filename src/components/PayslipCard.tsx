@@ -205,10 +205,30 @@ export default function PayslipCard({ payslip, showExport = false }: Props) {
           )}
         </div>
 
-        {/* Note */}
-        {payslip.admin_note && (
-          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800">
-            <strong>หมายเหตุ:</strong> {payslip.admin_note}
+        {/* Notes & Details */}
+        {(payslip.admin_note || payslip.due_date || payslip.document_url) && (
+          <div className="space-y-2">
+            {payslip.admin_note && (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800">
+                <p className="font-semibold mb-0.5">📝 หมายเหตุ</p>
+                <p>{payslip.admin_note}</p>
+              </div>
+            )}
+            {payslip.due_date && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
+                <p className="font-semibold mb-0.5">📅 กำหนดจ่าย</p>
+                <p>{new Date(payslip.due_date).toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
+              </div>
+            )}
+            {payslip.document_url && (
+              <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-3 text-sm text-indigo-800">
+                <p className="font-semibold mb-0.5">📎 เอกสารประกอบ</p>
+                <a href={payslip.document_url} target="_blank" rel="noopener noreferrer"
+                  className="underline break-all hover:text-indigo-600">
+                  {payslip.document_url}
+                </a>
+              </div>
+            )}
           </div>
         )}
 
@@ -331,7 +351,9 @@ function buildPrintHtml(payslip: Payslip): string {
       <div class="amount">${formatCurrency(payslip.net_pay)}</div>
       ${transferLine}
     </div>
-    ${payslip.admin_note ? `<div class="note-box"><strong>หมายเหตุ:</strong> ${payslip.admin_note}</div>` : ''}
+    ${payslip.admin_note ? `<div class="note-box"><strong>📝 หมายเหตุ:</strong> ${payslip.admin_note}</div>` : ''}
+    ${payslip.due_date ? `<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:12px;font-size:13px;color:#1e40af;margin-top:8px"><strong>📅 กำหนดจ่าย:</strong> ${new Date(payslip.due_date).toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })}</div>` : ''}
+    ${payslip.document_url ? `<div style="background:#eef2ff;border:1px solid #c7d2fe;border-radius:8px;padding:12px;font-size:13px;color:#3730a3;margin-top:8px"><strong>📎 เอกสารประกอบ:</strong> <a href="${payslip.document_url}" style="color:#4338ca">${payslip.document_url}</a></div>` : ''}
   </div>
 </div>
 </body>

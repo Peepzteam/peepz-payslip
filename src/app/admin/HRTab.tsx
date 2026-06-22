@@ -61,16 +61,17 @@ const STATUS_OPTIONS = [
 const MONTHS = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.']
 const DAY_NAMES = ['อา','จ','อ','พ','พฤ','ศ','ส']
 
-export default function HRTab() {
+export default function HRTab({ isReadOnly = false }: { isReadOnly?: boolean }) {
   const now = new Date()
   const [month, setMonth] = useState(now.getMonth() + 1)
   const [year, setYear] = useState(now.getFullYear())
-  const [subTab, setSubTab] = useState<'dashboard' | 'attendance' | 'leave'>('dashboard')
+  const [subTab, setSubTab] = useState<'dashboard' | 'attendance' | 'leave' | 'summary'>('dashboard')
 
   const [employees, setEmployees] = useState<Employee[]>([])
   const [selectedEmpIds, setSelectedEmpIds] = useState<Set<string>>(new Set())
   const [records, setRecords] = useState<WorkRecord[]>([])
   const [prevRecords, setPrevRecords] = useState<WorkRecord[]>([])
+  const [yearRecords, setYearRecords] = useState<WorkRecord[]>([])
   const [payslips, setPayslips] = useState<PayslipSummary[]>([])
   const [prevPayslips, setPrevPayslips] = useState<PayslipSummary[]>([])
   const [holidays, setHolidays] = useState<CompanyHoliday[]>([])
@@ -115,18 +116,19 @@ export default function HRTab() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [empRes, recRes, prevRecRes, payRes, prevPayRes, holRes, leaveRes] = await Promise.all([
+      const [empRes, recRes, prevRecRes, yearRecRes, payRes, prevPayRes, holRes, leaveRes] = await Promise.all([
         fetch('/api/employees'),
         fetch(`/api/work-records?month=${month}&year=${year}`),
         fetch(`/api/work-records?month=${prevMonth}&year=${prevYear}`),
+        fetch(`/api/work-records?year=${year}`),
         fetch(`/api/payslips?month=${month}&year=${year}`),
         fetch(`/api/payslips?month=${prevMonth}&year=${prevYear}`),
         fetch(`/api/holidays?year=${year}`),
         fetch(`/api/leave-records?year=${year}`),
       ])
       const safeJson = async (r: Response) => { try { return await r.json() } catch { return [] } }
-      const [emps, recs, prevRecs, pays, prevPays, hols, leaves] = await Promise.all([
-        safeJson(empRes), safeJson(recRes), safeJson(prevRecRes), safeJson(payRes), safeJson(prevPayRes), safeJson(holRes), safeJson(leaveRes)
+      const [emps, recs, prevRecs, yearRecs, pays, prevPays, hols, leaves] = await Promise.all([
+        safeJson(empRes), safeJson(recRes), safeJson(prevRecRes), safeJson(yearRecRes), safeJson(payRes), safeJson(prevPayRes), safeJson(holRes), safeJson(leaveRes)
       ])
       const activeEmps: Employee[] = Array.isArray(emps) ? emps.filter((e: Employee) => e.is_active) : []
       setEmployees(activeEmps)
@@ -138,6 +140,7 @@ export default function HRTab() {
       })
       setRecords(Array.isArray(recs) ? recs : [])
       setPrevRecords(Array.isArray(prevRecs) ? prevRecs : [])
+      setYearRecords(Array.isArray(yearRecs) ? yearRecs : [])
       setPayslips(Array.isArray(pays) ? pays : [])
       setPrevPayslips(Array.isArray(prevPays) ? prevPays : [])
       setHolidays(Array.isArray(hols) ? hols : [])
@@ -551,22 +554,22 @@ export default function HRTab() {
               <button onClick={() => navigate(1)} className="p-1.5 hover:bg-gray-100 rounded"><ChevronRight size={15} /></button>
             </div>
             <div className="flex bg-gray-100 rounded-lg p-0.5">
-              {(['dashboard','attendance','leave'] as const).map(t => (
+              {(['dashboard','attendance','leave','summary'] as const).map(t => (
                 <button key={t} onClick={() => setSubTab(t)}
                   className={`px-3 py-1.5 rounded-md text-xs font-medium transition ${subTab===t ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500 hover:text-gray-700'}`}>
-                  {t === 'dashboard' ? '📊 Dashboard' : t === 'attendance' ? '📋 บันทึกการทำงาน' : '🏖️ วันลา'}
+                  {t === 'dashboard' ? '📊 Dashboard' : t === 'attendance' ? '📋 บันทึกการทำงาน' : t === 'leave' ? '🏖️ วันลา' : '📈 ภาพรวมรายปี'}
                 </button>
               ))}
             </div>
           </div>
           <div className="flex gap-2">
-            {pendingCount > 0 && (
+            {!isReadOnly && pendingCount > 0 && (
               <button onClick={saveAll} disabled={saving}
                 className="flex items-center gap-1.5 bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-indigo-700 disabled:opacity-60">
                 <Save size={13} /> {saving ? 'กำลังบันทึก...' : `บันทึก ${pendingCount} รายการ`}
               </button>
             )}
-            {subTab === 'attendance' && (
+            {!isReadOnly && subTab === 'attendance' && (
               <button onClick={() => setShowBulk(true)}
                 className="flex items-center gap-1.5 bg-violet-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-violet-700">
                 <CalendarRange size={13} /> กรอกแบบช่วง
@@ -596,7 +599,7 @@ export default function HRTab() {
             getRecord={getRecord} openCell={openCell} holidays={holidays}
             onExportEmployee={exportEmployeePNG}
           />
-        ) : (
+        ) : subTab === 'leave' ? (
           <LeaveView
             employees={employees}
             leaveRecords={leaveRecords}
@@ -606,6 +609,14 @@ export default function HRTab() {
             leaveSaving={leaveSaving}
             addLeave={addLeave}
             deleteLeave={deleteLeave}
+            isReadOnly={isReadOnly}
+          />
+        ) : (
+          <YearlySummaryView
+            employees={employees}
+            yearRecords={yearRecords}
+            leaveRecords={leaveRecords}
+            year={year}
           />
         )}
         </div>
@@ -861,6 +872,11 @@ function DashboardView({ month, year, prevMonth, prevYear, stats, prevStats, dif
     const d = new Date(h.date + 'T00:00:00')
     return d.getMonth() + 1 === month && d.getFullYear() === year
   }).sort((a, b) => a.date.localeCompare(b.date))
+  const monthBirthdays = employees
+    .filter(e => e.type === 'fulltime' && e.birth_date)
+    .map(e => ({ emp: e, d: new Date(e.birth_date as string + 'T00:00:00') }))
+    .filter(({ d }) => d.getMonth() + 1 === month)
+    .sort((a, b) => a.d.getDate() - b.d.getDate())
   const today = new Date()
   const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`
   const upcomingHolidays = holidays.filter(h => h.date >= todayStr).sort((a,b) => a.date.localeCompare(b.date)).slice(0, 3)
@@ -920,6 +936,26 @@ function DashboardView({ month, year, prevMonth, prevYear, stats, prevStats, dif
           </div>
         )}
       </div>
+
+      {/* Birthdays this month */}
+      {monthBirthdays.length > 0 && (
+        <div className="bg-pink-50 border border-pink-200 rounded-xl p-4">
+          <h3 className="font-semibold text-pink-700 mb-2 flex items-center gap-2 text-sm">🎂 วันเกิดพนักงานเดือน{['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'][month-1]} — {monthBirthdays.length} คน</h3>
+          <div className="flex flex-wrap gap-2">
+            {monthBirthdays.map(({ emp, d }) => {
+              const dayNames = ['อา','จ','อ','พ','พฤ','ศ','ส']
+              const isToday = d.getDate() === new Date().getDate() && month === new Date().getMonth() + 1 && year === new Date().getFullYear()
+              return (
+                <div key={emp.id} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border ${isToday ? 'bg-pink-400 text-white border-pink-400' : 'bg-white text-pink-700 border-pink-300'}`}>
+                  <span className="font-bold">{d.getDate()}</span>
+                  <span className="opacity-70">{dayNames[d.getDay()]}.</span>
+                  <span>{emp.name}</span>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Holidays this month */}
       {monthHolidays.length > 0 && (
@@ -1027,6 +1063,16 @@ function AttendanceGrid({ employees, days, year, month, getRecord, openCell, hol
       .map(h => [new Date(h.date + 'T00:00:00').getDate(), h.name])
   )
 
+  // 🎂 วันเกิดพนักงานประจำ (เทียบเฉพาะวัน/เดือน ไม่สนปี)
+  const birthdayMap = new Map<number, string[]>()
+  employees.filter(e => e.type === 'fulltime' && e.birth_date).forEach(e => {
+    const bd = new Date(e.birth_date as string + 'T00:00:00')
+    if (bd.getMonth() + 1 === month) {
+      const d = bd.getDate()
+      birthdayMap.set(d, [...(birthdayMap.get(d) || []), e.name])
+    }
+  })
+
   function statusMeta(val: string | undefined) {
     return STATUS_OPTIONS.find(s => s.val === val)
   }
@@ -1051,11 +1097,17 @@ function AttendanceGrid({ employees, days, year, month, getRecord, openCell, hol
             {days.map(d => {
               const isHol = holidayMap.has(d)
               const holName = holidayMap.get(d)
+              const birthdayNames = birthdayMap.get(d)
               return (
                 <th key={d} className={`px-1 py-2 text-center border-b border-gray-200 min-w-[52px] ${isWeekend(d) ? 'bg-red-50' : isHol ? 'bg-amber-50' : 'bg-gray-50'}`}>
                   <div className={`font-bold ${isWeekend(d) ? 'text-red-400' : isHol ? 'text-amber-600' : 'text-gray-700'}`}>{d}</div>
                   <div className={`font-normal ${isHol ? 'text-amber-500' : 'text-gray-400'}`} style={{fontSize:'9px'}}>{isHol ? '🏖️' : DAY_NAMES[dateOf(d).getDay()]}</div>
                   {isHol && <div className="text-amber-500 leading-tight" style={{fontSize:'8px',maxWidth:'50px',wordBreak:'break-word'}}>{holName}</div>}
+                  {birthdayNames && (
+                    <div className="text-pink-500 leading-tight" style={{fontSize:'8px',maxWidth:'50px',wordBreak:'break-word'}} title={`🎂 วันเกิด: ${birthdayNames.join(', ')}`}>
+                      🎂{birthdayNames.length > 1 ? ` x${birthdayNames.length}` : ''}
+                    </div>
+                  )}
                 </th>
               )
             })}
@@ -1088,11 +1140,19 @@ function AttendanceGrid({ employees, days, year, month, getRecord, openCell, hol
                   const hasOt = Number(rec.ot_hours) > 0
                   const hasTime = rec.check_in || rec.check_out
                   const isHolDay = holidayMap.has(d)
+                  const isBirthday = emp.type === 'fulltime' && !!emp.birth_date && (() => {
+                    const bd = new Date(emp.birth_date as string + 'T00:00:00')
+                    return bd.getMonth() + 1 === month && bd.getDate() === d
+                  })()
                   return (
                     <td key={d}
                       onClick={() => openCell(emp.id, d)}
-                      className={`border border-gray-100 cursor-pointer hover:bg-indigo-50 transition-colors ${isWeekend(d) ? 'bg-red-50/30' : isHolDay ? 'bg-amber-50/40' : ''}`}>
-                      <div className="px-1 py-1.5 flex flex-col items-center gap-0.5 min-h-[52px] justify-center">
+                      title={isBirthday ? `🎂 วันเกิดคุณ ${emp.name}` : undefined}
+                      className={`border border-gray-100 cursor-pointer hover:bg-indigo-50 transition-colors ${isBirthday ? 'bg-pink-50' : isWeekend(d) ? 'bg-red-50/30' : isHolDay ? 'bg-amber-50/40' : ''}`}>
+                      <div className="px-1 py-1.5 flex flex-col items-center gap-0.5 min-h-[52px] justify-center relative">
+                        {isBirthday && (
+                          <span className="absolute top-0 right-0.5 text-[10px]">🎂</span>
+                        )}
                         {meta ? (
                           <span className={`px-1.5 py-0.5 rounded text-xs font-medium border ${meta.color}`}>
                             {meta.label.length > 4 ? meta.label.slice(0,3)+'.' : meta.label}
@@ -1138,9 +1198,10 @@ interface LeaveViewProps {
   leaveSaving: boolean
   addLeave: () => void
   deleteLeave: (id: string) => void
+  isReadOnly?: boolean
 }
 
-function LeaveView({ employees, leaveRecords, year, leaveForm, setLeaveForm, leaveSaving, addLeave, deleteLeave }: LeaveViewProps) {
+function LeaveView({ employees, leaveRecords, year, leaveForm, setLeaveForm, leaveSaving, addLeave, deleteLeave, isReadOnly = false }: LeaveViewProps) {
   // Quota summary per employee
   const quotaSummary = employees.map(emp => {
     const empLeaves = leaveRecords.filter(l => l.employee_id === emp.id && l.year === year)
@@ -1170,7 +1231,7 @@ function LeaveView({ employees, leaveRecords, year, leaveForm, setLeaveForm, lea
   return (
     <div className="space-y-6 p-1">
       {/* Add Leave Form */}
-      <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
+      {!isReadOnly && <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
         <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
           <PlusCircle size={15} className="text-indigo-500" /> บันทึกการลา
         </h3>
@@ -1215,7 +1276,7 @@ function LeaveView({ employees, leaveRecords, year, leaveForm, setLeaveForm, lea
             </button>
           </div>
         </div>
-      </div>
+      </div>}
 
       {/* Quota Summary */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
@@ -1298,9 +1359,11 @@ function LeaveView({ employees, leaveRecords, year, leaveForm, setLeaveForm, lea
                       </td>
                       <td className="px-4 py-2.5 text-gray-500 text-xs">{l.note || '-'}</td>
                       <td className="px-4 py-2.5 text-right">
-                        <button onClick={() => deleteLeave(l.id)} className="text-red-400 hover:text-red-600 p-1 rounded hover:bg-red-50 transition">
-                          <Trash2 size={13} />
-                        </button>
+                        {!isReadOnly && (
+                          <button onClick={() => deleteLeave(l.id)} className="text-red-400 hover:text-red-600 p-1 rounded hover:bg-red-50 transition">
+                            <Trash2 size={13} />
+                          </button>
+                        )}
                       </td>
                     </tr>
                   )
@@ -1309,6 +1372,132 @@ function LeaveView({ employees, leaveRecords, year, leaveForm, setLeaveForm, lea
             </table>
           </div>
         )}
+      </div>
+    </div>
+  )
+}
+
+// ─── Yearly Summary View (ขาด ลา มาสาย ทั้งปี) ───
+function YearlySummaryView({ employees, yearRecords, leaveRecords, year }: {
+  employees: Employee[]
+  yearRecords: WorkRecord[]
+  leaveRecords: LeaveRecord[]
+  year: number
+}) {
+  const rows = employees.map(emp => {
+    const recs = yearRecords.filter(r => r.employee_id === emp.id)
+    const late = recs.filter(r => r.status === 'late').length
+    const absent = recs.filter(r => r.status === 'absent').length
+    const otHours = recs.reduce((s, r) => s + (Number(r.ot_hours) || 0), 0)
+
+    const empLeaves = leaveRecords.filter(l => l.employee_id === emp.id && l.year === year)
+    const usedSick = empLeaves.filter(l => l.leave_type === 'sick').reduce((s, l) => s + l.days, 0)
+    const usedVacation = empLeaves.filter(l => l.leave_type === 'vacation').reduce((s, l) => s + l.days, 0)
+    const usedPersonal = empLeaves.filter(l => l.leave_type === 'personal').reduce((s, l) => s + l.days, 0)
+    const usedOther = empLeaves.filter(l => l.leave_type === 'other').reduce((s, l) => s + l.days, 0)
+    const totalLeave = usedSick + usedVacation + usedPersonal + usedOther
+
+    return { emp, late, absent, otHours, usedSick, usedVacation, usedPersonal, usedOther, totalLeave }
+  })
+
+  const totals = rows.reduce((acc, r) => ({
+    late: acc.late + r.late,
+    absent: acc.absent + r.absent,
+    leave: acc.leave + r.totalLeave,
+    otHours: acc.otHours + r.otHours,
+  }), { late: 0, absent: 0, leave: 0, otHours: 0 })
+
+  return (
+    <div className="space-y-4">
+      {/* Company-wide totals */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm text-center">
+          <p className="text-xs text-gray-400 mb-1 flex items-center justify-center gap-1"><AlertCircle size={11}/> มาสายรวม</p>
+          <p className="text-2xl font-bold text-yellow-600">{totals.late}</p>
+          <p className="text-[10px] text-gray-400">ครั้ง</p>
+        </div>
+        <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm text-center">
+          <p className="text-xs text-gray-400 mb-1 flex items-center justify-center gap-1"><X size={11}/> ขาดงานรวม</p>
+          <p className="text-2xl font-bold text-red-600">{totals.absent}</p>
+          <p className="text-[10px] text-gray-400">ครั้ง</p>
+        </div>
+        <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm text-center">
+          <p className="text-xs text-gray-400 mb-1 flex items-center justify-center gap-1"><Calendar size={11}/> ลารวม</p>
+          <p className="text-2xl font-bold text-indigo-600">{totals.leave}</p>
+          <p className="text-[10px] text-gray-400">วัน</p>
+        </div>
+        <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm text-center">
+          <p className="text-xs text-gray-400 mb-1 flex items-center justify-center gap-1"><Clock size={11}/> OT รวม</p>
+          <p className="text-2xl font-bold text-emerald-600">{totals.otHours}</p>
+          <p className="text-[10px] text-gray-400">ชม.</p>
+        </div>
+      </div>
+
+      {/* Per-employee breakdown */}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        <div className="px-4 py-3 border-b border-gray-100">
+          <h3 className="text-sm font-semibold text-gray-700">ภาพรวมรายบุคคล ปี {year + 543}</h3>
+          <p className="text-xs text-gray-400 mt-0.5">สรุปขาด ลา มาสาย และโควต้าวันลา ตั้งแต่ ม.ค. – ธ.ค. {year + 543}</p>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-gray-50 text-gray-500 text-xs">
+                <th className="px-4 py-2 text-left font-medium">พนักงาน</th>
+                <th className="px-4 py-2 text-center font-medium">มาสาย</th>
+                <th className="px-4 py-2 text-center font-medium">ขาดงาน</th>
+                <th className="px-4 py-2 text-left font-medium">ลาป่วย (30)</th>
+                <th className="px-4 py-2 text-left font-medium">ลาพักร้อน (6)</th>
+                <th className="px-4 py-2 text-left font-medium">ลากิจ (6)</th>
+                <th className="px-4 py-2 text-left font-medium">ลาอื่นๆ</th>
+                <th className="px-4 py-2 text-center font-medium">ลารวม</th>
+                <th className="px-4 py-2 text-center font-medium">OT (ชม.)</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {rows.map(({ emp, late, absent, usedSick, usedVacation, usedPersonal, usedOther, totalLeave, otHours }) => {
+                const sickOver = usedSick > 30
+                const vacationOver = usedVacation > 6
+                const personalOver = usedPersonal > 6
+                return (
+                  <tr key={emp.id} className="hover:bg-gray-50/50">
+                    <td className="px-4 py-2.5">
+                      <div className="font-medium text-gray-800 text-sm">{emp.name}</div>
+                      <div className="text-xs text-gray-400">{emp.employee_code} · {emp.type === 'fulltime' ? 'ประจำ' : 'ฟรีแลนซ์'}</div>
+                    </td>
+                    <td className="px-4 py-2.5 text-center">
+                      <span className={`text-xs font-semibold ${late > 0 ? 'text-yellow-600' : 'text-gray-300'}`}>{late}</span>
+                    </td>
+                    <td className="px-4 py-2.5 text-center">
+                      <span className={`text-xs font-semibold ${absent > 0 ? 'text-red-600' : 'text-gray-300'}`}>{absent}</span>
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <span className={`text-xs font-medium ${sickOver ? 'text-red-600' : 'text-gray-600'}`}>{usedSick}/30{sickOver && ' ⚠️'}</span>
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <span className={`text-xs font-medium ${vacationOver ? 'text-red-600' : 'text-gray-600'}`}>{usedVacation}/6{vacationOver && ' ⚠️'}</span>
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <span className={`text-xs font-medium ${personalOver ? 'text-red-600' : 'text-gray-600'}`}>{usedPersonal}/6{personalOver && ' ⚠️'}</span>
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <span className="text-xs text-gray-500">{usedOther} วัน</span>
+                    </td>
+                    <td className="px-4 py-2.5 text-center">
+                      <span className="bg-gray-100 text-gray-700 text-xs font-semibold px-2 py-0.5 rounded-full">{totalLeave} วัน</span>
+                    </td>
+                    <td className="px-4 py-2.5 text-center">
+                      <span className="text-xs font-semibold text-emerald-600">{otHours > 0 ? otHours : '-'}</span>
+                    </td>
+                  </tr>
+                )
+              })}
+              {rows.length === 0 && (
+                <tr><td colSpan={9} className="text-center text-gray-400 py-8 text-sm">ยังไม่มีข้อมูลพนักงาน</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   )

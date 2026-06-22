@@ -3,13 +3,18 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Payslip } from '@/types'
 import PayslipCard from '@/components/PayslipCard'
+import AttendanceOverview from '@/components/AttendanceOverview'
 import { LogOut } from 'lucide-react'
+
+type Tab = 'payslips' | 'attendance'
 
 export default function PayslipPage() {
   const [payslips, setPayslips] = useState<Payslip[]>([])
   const [loading, setLoading] = useState(true)
   const [ackLoading, setAckLoading] = useState<string | null>(null)
   const [userEmail, setUserEmail] = useState('')
+  const [employeeId, setEmployeeId] = useState<string | null>(null)
+  const [tab, setTab] = useState<Tab>('payslips')
 
   useEffect(() => {
     loadPayslips()
@@ -33,6 +38,7 @@ export default function PayslipPage() {
       setLoading(false)
       return
     }
+    setEmployeeId(emp.id)
 
     const { data } = await supabase
       .from('payslips')
@@ -77,7 +83,7 @@ export default function PayslipPage() {
     <main className="min-h-screen bg-gray-50">
       <header className="bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center">
         <div>
-          <h1 className="text-lg font-bold text-gray-900">สลิปเงินเดือนของฉัน</h1>
+          <h1 className="text-lg font-bold text-gray-900">พื้นที่พนักงาน</h1>
           <p className="text-xs text-gray-400">{userEmail}</p>
         </div>
         <button
@@ -89,16 +95,46 @@ export default function PayslipPage() {
         </button>
       </header>
 
+      {/* Tab bar */}
+      <div className="bg-white border-b border-gray-200">
+        <div className="max-w-2xl mx-auto px-6 flex gap-1">
+          {([
+            { id: 'payslips' as Tab, label: '🧾 สลิปเงินเดือน' },
+            { id: 'attendance' as Tab, label: '📊 ภาพรวมการทำงาน' },
+          ]).map((t) => (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              className={`px-3 py-2.5 text-sm font-medium border-b-2 transition whitespace-nowrap ${
+                tab === t.id
+                  ? 'border-indigo-600 text-indigo-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <div className="max-w-2xl mx-auto p-6 space-y-4">
-        {payslips.length === 0 ? (
-          <div className="text-center py-16 text-gray-400">
-            <p className="text-4xl mb-3">📭</p>
-            <p>ยังไม่มีสลิปเงินเดือน</p>
-          </div>
-        ) : (
-          payslips.map((p) => (
-            <PayslipCard key={p.id} payslip={p} />
-          ))
+        {tab === 'payslips' && (
+          payslips.length === 0 ? (
+            <div className="text-center py-16 text-gray-400">
+              <p className="text-4xl mb-3">📭</p>
+              <p>ยังไม่มีสลิปเงินเดือน</p>
+            </div>
+          ) : (
+            payslips.map((p) => (
+              <PayslipCard key={p.id} payslip={p} />
+            ))
+          )
+        )}
+
+        {tab === 'attendance' && (
+          employeeId
+            ? <AttendanceOverview employeeId={employeeId} />
+            : <div className="text-center py-16 text-gray-400"><p>ไม่พบข้อมูลพนักงาน</p></div>
         )}
       </div>
     </main>

@@ -11,7 +11,7 @@ function formatDateTH(dateStr: string) {
   return `${DAYS_TH[d.getDay()]} ${d.getDate()} ${MONTHS_TH[d.getMonth()]} ${d.getFullYear() + 543}`
 }
 
-export default function HolidaysTab() {
+export default function HolidaysTab({ isReadOnly = false }: { isReadOnly?: boolean }) {
   const currentYear = new Date().getFullYear()
   const [year, setYear] = useState(currentYear)
   const [holidays, setHolidays] = useState<CompanyHoliday[]>([])
@@ -74,10 +74,12 @@ export default function HolidaysTab() {
               <option key={y} value={y}>ปี {y + 543} ({y})</option>
             ))}
           </select>
-          <button onClick={() => setShowForm(!showForm)}
-            className="flex items-center gap-1 text-sm bg-indigo-600 text-white px-3 py-2 rounded-lg hover:bg-indigo-700">
-            <Plus size={15} /> เพิ่มวันหยุด
-          </button>
+          {!isReadOnly && (
+            <button onClick={() => setShowForm(!showForm)}
+              className="flex items-center gap-1 text-sm bg-indigo-600 text-white px-3 py-2 rounded-lg hover:bg-indigo-700">
+              <Plus size={15} /> เพิ่มวันหยุด
+            </button>
+          )}
         </div>
       </div>
 
@@ -148,10 +150,12 @@ export default function HolidaysTab() {
                       </td>
                       <td className="px-4 py-2.5 text-gray-700">{h.name}</td>
                       <td className="px-4 py-2.5 text-center">
-                        <button onClick={() => deleteHoliday(h.id)}
-                          className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-500 transition p-1">
-                          <Trash2 size={13} />
-                        </button>
+                        {!isReadOnly && (
+                          <button onClick={() => deleteHoliday(h.id)}
+                            className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-500 transition p-1">
+                            <Trash2 size={13} />
+                          </button>
+                        )}
                       </td>
                     </tr>
                   )

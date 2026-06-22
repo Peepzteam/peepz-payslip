@@ -99,7 +99,7 @@ function buildPayslipEmailHtml(payslip: Payslip): string {
 }
 
 export async function sendPayslipEmail(payslip: Payslip) {
-  const toEmail = payslip.employee?.email ?? payslip.guest_email
+  const toEmail = payslip.employee?.email || payslip.guest_email || payslip.wht_cert_email
   const toName = payslip.employee?.name ?? payslip.guest_name
   if (!toEmail) throw new Error('No recipient email')
 
@@ -118,7 +118,7 @@ export async function sendPayslipEmail(payslip: Payslip) {
 }
 
 export async function sendTransferConfirmationEmail(payslip: Payslip) {
-  const toEmail = payslip.employee?.email ?? payslip.guest_email
+  const toEmail = payslip.employee?.email || payslip.guest_email || payslip.wht_cert_email
   const toName = payslip.employee?.name ?? payslip.guest_name ?? ''
   if (!toEmail) throw new Error('No recipient email')
   const period = formatPeriod(payslip.period_month, payslip.period_year)

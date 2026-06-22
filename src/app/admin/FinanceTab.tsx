@@ -1,7 +1,7 @@
 'use client'
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { formatCurrency } from '@/lib/utils'
-import { Plus, Trash2, ChevronLeft, ChevronRight, TrendingUp, TrendingDown, Wallet, X, Pencil, Check, Download } from 'lucide-react'
+import { Plus, Trash2, ChevronLeft, ChevronRight, TrendingUp, TrendingDown, Wallet, X, Pencil, Check, Download, AlertTriangle, Upload, ShieldCheck } from 'lucide-react'
 
 interface IncomeRecord {
   id: string; month: number; year: number
@@ -10,7 +10,7 @@ interface IncomeRecord {
   document_url: string | null
   transaction_date: string | null
   is_paid: boolean; paid_at: string | null
-  created_at: string
+  created_at: string; created_by: string | null
 }
 interface ExpenseRecord {
   id: string; month: number; year: number
@@ -19,7 +19,7 @@ interface ExpenseRecord {
   document_url: string | null
   transaction_date: string | null
   is_paid: boolean; paid_at: string | null
-  created_at: string
+  created_at: string; created_by: string | null
 }
 
 interface PayslipRecord {
@@ -33,11 +33,39 @@ interface PayslipRecord {
   other_income: number
   social_security: number
   withholding_tax: number
+  other_deduction: number
+  other_deduction_note: string | null
+  other_income_note: string | null
   transfer_date: string | null
   is_paid: boolean
+  document_url: string | null
+  payment_doc_url: string | null
+  wht_cert_email: string | null
+  freelance_confirm_id_card_url: string | null
+  freelance_confirm_bank_book_url: string | null
+  project_name: string | null
+  line_items: { description: string; quantity: number; unit: string; rate: number; total: number }[] | null
+  ot_items: { date: string; start_time: string; end_time: string; hours: number; type: 'normal' | 'holiday'; rate: number; amount: number }[] | null
+  incentive_items: { description: string; amount: number }[] | null
+  incentive_note: string | null
   guest_name: string | null
   guest_type: string | null
-  employee: { id: string; name: string; employee_code: string; type: string } | null
+  created_by: string | null
+  employee: { id: string; name: string; employee_code: string; type: string; doc_id_card_url: string | null; doc_bank_book_url: string | null } | null
+}
+
+function UserBadge({ name }: { name: string | null }) {
+  if (!name) return null
+  const colors: Record<string, string> = {
+    Prae: 'bg-pink-100 text-pink-500',
+    Ploy: 'bg-gray-100 text-gray-500',
+  }
+  const cls = colors[name] ?? 'bg-gray-100 text-gray-500'
+  return (
+    <span className={`inline-block text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${cls}`}>
+      {name}
+    </span>
+  )
 }
 
 // ฟังก์ชันตรวจว่า payslip นี้เป็น freelance หรือไม่
@@ -104,11 +132,25 @@ function todayISO() {
 const EMPTY_INCOME = { amount: '', sources: [] as string[], client_name: '', description: '', note: '', document_url: '', transaction_date: todayISO() }
 const EMPTY_EXPENSE = { category: 'rent', amount: '', description: '', note: '', document_url: '', transaction_date: todayISO() }
 
-export default function FinanceTab() {
+export default function FinanceTab({ isReadOnly = false }: { isReadOnly?: boolean }) {
   const now = new Date()
   const [month, setMonth] = useState(now.getMonth() + 1)
   const [year, setYear] = useState(now.getFullYear())
   const [view, setView] = useState<'month' | 'year'>('month')
+  const [showMonthPicker, setShowMonthPicker] = useState(false)
+  const [pickerYear, setPickerYear] = useState(now.getFullYear())
+  const monthPickerRef = useRef<HTMLDivElement>(null)
+  // ปิด dropdown เมื่อคลิกนอก
+  useEffect(() => {
+    if (!showMonthPicker) return
+    const handler = (e: MouseEvent) => {
+      if (monthPickerRef.current && !monthPickerRef.current.contains(e.target as Node)) {
+        setShowMonthPicker(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [showMonthPicker])
 
   const [incomes, setIncomes] = useState<IncomeRecord[]>([])
   const [expenses, setExpenses] = useState<ExpenseRecord[]>([])
@@ -116,6 +158,9 @@ export default function FinanceTab() {
   const [allExpenses, setAllExpenses] = useState<ExpenseRecord[]>([])
   const [payslips, setPayslips] = useState<PayslipRecord[]>([])
   const [allPayslips, setAllPayslips] = useState<PayslipRecord[]>([])
+  const [pastIncomes, setPastIncomes] = useState<IncomeRecord[]>([])
+  const [pastExpenses, setPastExpenses] = useState<ExpenseRecord[]>([])
+  const [pastPayslips, setPastPayslips] = useState<PayslipRecord[]>([])
   const [loading, setLoading] = useState(true)
 
   const [showForm, setShowForm] = useState<'income' | 'expense' | null>(null)
@@ -128,21 +173,33 @@ export default function FinanceTab() {
   const [editExpenseForm, setEditExpenseForm] = useState({...EMPTY_EXPENSE})
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
+  const [dupWarning, setDupWarning] = useState<{ existing: ExpenseRecord[]; pending: typeof expenseForm } | null>(null)
+  const [bankImportOpen, setBankImportOpen] = useState(false)
+  const [bankImportText, setBankImportText] = useState('')
+  const [aiAnalysis, setAiAnalysis] = useState<string>('')
+  const [aiLoading, setAiLoading] = useState(false)
+  const [aiOpen, setAiOpen] = useState(false)
+  const [bankImportRows, setBankImportRows] = useState<{ txn: BankTxn; matches: LedgerRow[] }[]>([])
+  const [bankImportAnalyzed, setBankImportAnalyzed] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [incRes, expRes, allIncRes, allExpRes, payRes, allPayRes] = await Promise.all([
+      const [incRes, expRes, allIncRes, allExpRes, payRes, allPayRes, pastIncRes, pastExpRes, pastPayRes] = await Promise.all([
         fetch(`/api/income-records?month=${month}&year=${year}`),
         fetch(`/api/expense-records?month=${month}&year=${year}`),
         fetch(`/api/income-records?year=${year}`),
         fetch(`/api/expense-records?year=${year}`),
         fetch(`/api/payslips?month=${month}&year=${year}`),
         fetch(`/api/payslips?year=${year}`),
+        fetch(`/api/income-records`),
+        fetch(`/api/expense-records`),
+        fetch(`/api/payslips`),
       ])
       const safeJson = async (r: Response) => { try { return await r.json() } catch { return [] } }
-      const [inc, exp, allInc, allExp, pays, allPays] = await Promise.all([
-        safeJson(incRes), safeJson(expRes), safeJson(allIncRes), safeJson(allExpRes), safeJson(payRes), safeJson(allPayRes)
+      const [inc, exp, allInc, allExp, pays, allPays, pastInc, pastExp, pastPays] = await Promise.all([
+        safeJson(incRes), safeJson(expRes), safeJson(allIncRes), safeJson(allExpRes), safeJson(payRes), safeJson(allPayRes),
+        safeJson(pastIncRes), safeJson(pastExpRes), safeJson(pastPayRes)
       ])
       setIncomes(Array.isArray(inc) ? inc : [])
       setExpenses(Array.isArray(exp) ? exp : [])
@@ -150,6 +207,9 @@ export default function FinanceTab() {
       setAllExpenses(Array.isArray(allExp) ? allExp : [])
       setPayslips(Array.isArray(pays) ? pays : [])
       setAllPayslips(Array.isArray(allPays) ? allPays : [])
+      setPastIncomes(Array.isArray(pastInc) ? pastInc : [])
+      setPastExpenses(Array.isArray(pastExp) ? pastExp : [])
+      setPastPayslips(Array.isArray(pastPays) ? pastPays : [])
     } catch (err) {
       console.error('FinanceTab load error:', err)
     } finally {
@@ -164,6 +224,36 @@ export default function FinanceTab() {
   const totalPayroll = payslips.reduce((s, p) => s + Number(p.net_pay), 0)
   const totalExpense = totalExpenseManual + totalPayroll
   const netProfit = totalIncome - totalExpense
+
+  // ณ วันนี้ — รายการที่เกิดขึ้นจริงแล้ว (is_paid)
+  const actualIncome = incomes.filter(r => r.is_paid).reduce((s, r) => s + Number(r.amount), 0)
+  const actualExpenseManual = expenses.filter(r => r.is_paid).reduce((s, r) => s + Number(r.amount), 0)
+  const actualPayroll = payslips.filter(p => p.is_paid).reduce((s, p) => s + Number(p.net_pay), 0)
+  const actualExpense = actualExpenseManual + actualPayroll
+  const actualProfit = actualIncome - actualExpense
+  const actualIncomeCount = incomes.filter(r => r.is_paid).length
+  const actualExpenseCount = expenses.filter(r => r.is_paid).length + payslips.filter(p => p.is_paid).length
+
+  // ยอดยกมา — สะสมรายรับ-จ่ายที่เกิดขึ้นแล้วของเดือนก่อนหน้าทั้งหมด
+  const isBeforeCurrentMonth = (m: number, y: number) => y < year || (y === year && m < month)
+  const carryIncome = pastIncomes.filter(r => r.is_paid && isBeforeCurrentMonth(r.month, r.year)).reduce((s, r) => s + Number(r.amount), 0)
+  const carryExpense = pastExpenses.filter(r => r.is_paid && isBeforeCurrentMonth(r.month, r.year)).reduce((s, r) => s + Number(r.amount), 0)
+    + pastPayslips.filter(p => p.is_paid && isBeforeCurrentMonth(p.period_month, p.period_year)).reduce((s, p) => s + Number(p.net_pay), 0)
+  const carryBalance = carryIncome - carryExpense
+  const currentBalance = carryBalance + actualProfit
+
+  // WHT tracking
+  const prevMonth = month === 1 ? 12 : month - 1
+  const prevYear = month === 1 ? year - 1 : year
+  const nextMonth = month === 12 ? 1 : month + 1
+  const nextMonthYear = month === 12 ? year + 1 : year
+  const prevMonthWHT = pastPayslips
+    .filter(p => p.period_month === prevMonth && p.period_year === prevYear)
+    .reduce((s, p) => s + Number(p.withholding_tax), 0)
+  const currentMonthWHT = payslips.reduce((s, p) => s + Number(p.withholding_tax), 0)
+  const taxPaidThisMonth = expenses.filter(e => e.category === 'tax' && e.is_paid)
+  const prevWHTSubmitted = prevMonthWHT > 0 &&
+    taxPaidThisMonth.some(e => Math.abs(Number(e.amount) - prevMonthWHT) < 200)
 
   async function addIncome() {
     if (!incomeForm.amount || Number(incomeForm.amount) <= 0) {
@@ -185,10 +275,27 @@ export default function FinanceTab() {
     } catch { setFormError('เกิดข้อผิดพลาด ลองใหม่อีกครั้ง') }
   }
 
-  async function addExpense() {
+  async function addExpense(force = false) {
     if (!expenseForm.amount || Number(expenseForm.amount) <= 0) {
       setFormError('กรุณาใส่ยอดเงิน')
       return
+    }
+    // Duplicate detection
+    if (!force) {
+      const amt = Number(expenseForm.amount)
+      const desc = (expenseForm.description || '').toLowerCase().trim()
+      const dups = expenses.filter(e => {
+        const amtMatch = Math.abs(Number(e.amount) - amt) < 1
+        const d2 = (e.description || '').toLowerCase().trim()
+        const nameMatch = desc.length > 3 && d2.length > 3 &&
+          (desc.slice(0, 12) === d2.slice(0, 12) || d2.includes(desc.slice(0, 8)) || desc.includes(d2.slice(0, 8)))
+        return amtMatch && nameMatch
+      })
+      if (dups.length > 0) {
+        setDupWarning({ existing: dups, pending: { ...expenseForm } })
+        setShowForm(null)
+        return
+      }
     }
     setFormError(null)
     try {
@@ -203,6 +310,23 @@ export default function FinanceTab() {
       setExpenseForm({...EMPTY_EXPENSE, transaction_date: todayISO()})
       setShowForm(null); setFormError(null)
     } catch { setFormError('เกิดข้อผิดพลาด ลองใหม่อีกครั้ง') }
+  }
+
+  async function confirmDupExpense() {
+    if (!dupWarning) return
+    const pendingForm = dupWarning.pending
+    setDupWarning(null)
+    try {
+      const res = await fetch('/api/expense-records', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...pendingForm, amount: Number(pendingForm.amount), month, year }),
+      })
+      if (!res.ok) { const e = await res.json().catch(() => ({})); alert('บันทึกไม่สำเร็จ: ' + (e.error || res.status)); return }
+      const created: ExpenseRecord = await res.json()
+      setExpenses(prev => [created, ...prev])
+      setAllExpenses(prev => [created, ...prev])
+      setExpenseForm({...EMPTY_EXPENSE, transaction_date: todayISO()})
+    } catch { alert('เกิดข้อผิดพลาด ลองใหม่อีกครั้ง') }
   }
 
   function startEditIncome(r: IncomeRecord) {
@@ -270,6 +394,21 @@ export default function FinanceTab() {
     } catch { alert('เกิดข้อผิดพลาด ไม่สามารถลบรายจ่ายได้'); load() }
   }
 
+  async function togglePaidPayslip(p: PayslipRecord) {
+    const nowPaid = !p.is_paid
+    const name = p.employee?.name ?? p.guest_name ?? 'สลิปนี้'
+    const msg = nowPaid
+      ? `ยืนยันโอนเงินแล้ว?\n\n💸 ${name}\n฿${Number(p.net_pay).toLocaleString()}`
+      : `ยืนยันเปลี่ยนกลับเป็น "รอจ่าย"?\n\n💸 ${name}`
+    if (!confirm(msg)) return
+    const today = new Date().toISOString().slice(0, 10)
+    setPayslips(prev => prev.map(x => x.id === p.id ? { ...x, is_paid: nowPaid, transfer_date: nowPaid ? (x.transfer_date || today) : x.transfer_date } : x))
+    await fetch(`/api/payslips/${p.id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ is_paid: nowPaid, transfer_date: nowPaid ? (p.transfer_date || today) : undefined }),
+    })
+  }
+
   async function togglePaidIncome(r: IncomeRecord) {
     const nowPaid = !r.is_paid
     const label = [r.client_name, r.description].filter(Boolean).join(' – ') || 'รายรับนี้'
@@ -299,6 +438,56 @@ export default function FinanceTab() {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ is_paid: nowPaid, paid_at: nowPaid ? today : null }),
     })
+  }
+
+  async function runAiAnalysis() {
+    setAiLoading(true)
+    setAiAnalysis('')
+    setAiOpen(true)
+    try {
+      const expenseByCategory: Record<string, number> = {}
+      for (const e of expenses) {
+        const label = EXPENSE_CATEGORIES.find(c => c.val === e.category)?.label ?? e.category
+        expenseByCategory[label] = (expenseByCategory[label] ?? 0) + Number(e.amount)
+      }
+      if (totalPayroll > 0) expenseByCategory['👥 เงินเดือน (payroll)'] = (expenseByCategory['👥 เงินเดือน (payroll)'] ?? 0) + totalPayroll
+
+      const incomeBySource: Record<string, number> = {}
+      for (const inc of incomes) {
+        const srcs = inc.sources?.length ? inc.sources : ['other']
+        for (const s of srcs) {
+          const label = INCOME_SOURCES.find(x => x.val === s)?.label ?? s
+          incomeBySource[label] = (incomeBySource[label] ?? 0) + Number(inc.amount) / srcs.length
+        }
+      }
+
+      const res = await fetch('/api/ai-analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          month, year, monthName: MONTH_FULL[month - 1],
+          totalIncome, totalExpense, netProfit,
+          actualIncome, actualExpense, actualProfit,
+          carryBalance, currentBalance,
+          prevMonthWHT, currentMonthWHT, prevWHTSubmitted,
+          expenseByCategory, incomeBySource, totalPayroll,
+        }),
+      })
+      if (!res.ok || !res.body) { setAiAnalysis('เกิดข้อผิดพลาด ลองใหม่อีกครั้ง'); setAiLoading(false); return }
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let text = ''
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        text += decoder.decode(value, { stream: true })
+        setAiAnalysis(text)
+      }
+    } catch {
+      setAiAnalysis('เกิดข้อผิดพลาด กรุณาลองใหม่')
+    } finally {
+      setAiLoading(false)
+    }
   }
 
   function navigate(dir: number) {
@@ -346,7 +535,7 @@ export default function FinanceTab() {
   function exportCSV() {
     const fmt = (n: number) => n === 0 ? '' : n.toLocaleString('th-TH')
     const rows: string[][] = [
-      ['#', 'วันที่ทำรายการ', 'รายการ / ลูกค้า', 'ประเภท', 'หมวดหมู่', 'รายละเอียด / Breakdown', 'ยอดรับ (บาท)', 'ยอดจ่าย (บาท)', 'คงเหลือ (บาท)', 'สถานะ', 'วันที่รับ/จ่ายจริง', 'ลิงก์เอกสารประกอบ']
+      ['#', 'วันที่ทำรายการ', 'รายการ / ลูกค้า', 'ประเภท', 'หมวดหมู่', 'รายละเอียด / Breakdown', 'ยอดรับ (บาท)', 'ยอดจ่าย (บาท)', 'คงเหลือ (บาท)', 'สถานะ', 'วันที่รับ/จ่ายจริง', 'ลิงก์เอกสารประกอบ', 'สำเนาบัตรประชาชน', 'สำเนา Book Bank', 'ลิงก์เอกสารทำจ่าย', 'อีเมลใบ 50 ทวิ']
     ]
     ledgerWithBalance.forEach((row, idx) => {
       if (row.kind === 'payroll') {
@@ -356,21 +545,48 @@ export default function FinanceTab() {
         const type = isFl ? 'รายจ่าย' : 'รายจ่าย'
         const cat = isFl ? 'Freelance (สลิป)' : 'เงินเดือนพนักงาน (สลิป)'
         const gross = Number(p.base_salary||0) + Number(p.ot_amount||0) + Number(p.incentive||0) + Number(p.other_income||0)
-        const deduct = Number(p.social_security||0) + Number(p.withholding_tax||0)
-        const breakdown = [
-          Number(p.base_salary)      > 0 ? `เงินเดือน ${Number(p.base_salary).toLocaleString('th-TH')} บาท` : '',
-          Number(p.ot_amount)        > 0 ? `OT ${Number(p.ot_amount).toLocaleString('th-TH')} บาท` : '',
-          Number(p.incentive)        > 0 ? `Incentive ${Number(p.incentive).toLocaleString('th-TH')} บาท` : '',
-          Number(p.other_income)     > 0 ? `รายได้อื่นๆ ${Number(p.other_income).toLocaleString('th-TH')} บาท` : '',
-          gross > 0                  ? `รวมรายได้ ${gross.toLocaleString('th-TH')} บาท` : '',
-          Number(p.social_security)  > 0 ? `หัก ปกส. ${Number(p.social_security).toLocaleString('th-TH')} บาท` : '',
-          Number(p.withholding_tax)  > 0 ? `หัก ภาษีหัก ณ ที่จ่าย ${Number(p.withholding_tax).toLocaleString('th-TH')} บาท` : '',
-          deduct > 0                 ? `รวมหัก ${deduct.toLocaleString('th-TH')} บาท` : '',
-          `ยอดสุทธิ ${Number(p.net_pay).toLocaleString('th-TH')} บาท`,
-        ].filter(Boolean).join(' | ')
+        const deduct = Number(p.social_security||0) + Number(p.withholding_tax||0) + Number(p.other_deduction||0)
+        const lines: string[] = []
+        if (isFl) {
+          // Freelance: ไม่ใช้คำว่า "เงินเดือน" — แจกแจงเป็นรายการงานแต่ละรายการ
+          if (p.line_items?.length) {
+            p.line_items.forEach(it => {
+              const qty = it.quantity ? `${it.quantity.toLocaleString('th-TH')} ${it.unit || ''}`.trim() : ''
+              const rate = it.rate ? ` x ${Number(it.rate).toLocaleString('th-TH')}` : ''
+              lines.push(`${it.description || '(ไม่ระบุรายการ)'}${qty ? ` (${qty}${rate})` : ''} = ${Number(it.total).toLocaleString('th-TH')} บาท`)
+            })
+          } else if (Number(p.base_salary) > 0) {
+            lines.push(`ค่าจ้าง ${Number(p.base_salary).toLocaleString('th-TH')} บาท`)
+          }
+        } else {
+          // พนักงานประจำ: แจกแจงที่มาของเงินเดือนก้อนนี้
+          if (Number(p.base_salary) > 0) lines.push(`เงินเดือน ${Number(p.base_salary).toLocaleString('th-TH')} บาท`)
+          if (p.ot_items?.length) {
+            p.ot_items.forEach(o => {
+              lines.push(`OT ${o.date} ${o.start_time}-${o.end_time} (${o.hours} ชม. x ${Number(o.rate).toLocaleString('th-TH')}) = ${Number(o.amount).toLocaleString('th-TH')} บาท`)
+            })
+          } else if (Number(p.ot_amount) > 0) {
+            lines.push(`OT ${Number(p.ot_amount).toLocaleString('th-TH')} บาท`)
+          }
+          if (p.incentive_items?.length) {
+            p.incentive_items.forEach(it => {
+              lines.push(`Incentive: ${it.description || '(ไม่ระบุ)'} = ${Number(it.amount).toLocaleString('th-TH')} บาท`)
+            })
+          } else if (Number(p.incentive) > 0) {
+            lines.push(`Incentive${p.incentive_note ? ` (${p.incentive_note})` : ''} ${Number(p.incentive).toLocaleString('th-TH')} บาท`)
+          }
+        }
+        if (Number(p.other_income) > 0) lines.push(`รายได้อื่นๆ${p.other_income_note ? ` (${p.other_income_note})` : ''} ${Number(p.other_income).toLocaleString('th-TH')} บาท`)
+        if (gross > 0) lines.push(`รวมรายได้ ${gross.toLocaleString('th-TH')} บาท`)
+        if (Number(p.social_security) > 0) lines.push(`หัก ปกส. ${Number(p.social_security).toLocaleString('th-TH')} บาท`)
+        if (Number(p.withholding_tax) > 0) lines.push(`หัก ภาษีหัก ณ ที่จ่าย ${Number(p.withholding_tax).toLocaleString('th-TH')} บาท`)
+        if (Number(p.other_deduction) > 0) lines.push(`หักอื่นๆ${p.other_deduction_note ? ` (${p.other_deduction_note})` : ''} ${Number(p.other_deduction).toLocaleString('th-TH')} บาท`)
+        if (deduct > 0) lines.push(`รวมหัก ${deduct.toLocaleString('th-TH')} บาท`)
+        lines.push(`ยอดสุทธิ ${Number(p.net_pay).toLocaleString('th-TH')} บาท`)
+        const breakdown = lines.join('\n')
         const status = p.is_paid ? 'จ่ายแล้ว' : 'รอจ่าย'
         const paidDate = p.transfer_date ?? ''
-        rows.push([String(idx+1), paidDate, name, type, cat, breakdown, '', fmt(Number(p.net_pay)), fmt(Number(row.balance)), status, paidDate, ''])
+        rows.push([String(idx+1), paidDate, name, type, cat, breakdown, '', fmt(Number(p.net_pay)), fmt(Number(row.balance)), status, paidDate, p.document_url ?? '', p.freelance_confirm_id_card_url ?? p.employee?.doc_id_card_url ?? '', p.freelance_confirm_bank_book_url ?? p.employee?.doc_bank_book_url ?? '', p.payment_doc_url ?? '', p.wht_cert_email ?? ''])
 
       } else if (row.kind === 'income') {
         const r = row.rec as IncomeRecord
@@ -384,7 +600,7 @@ export default function FinanceTab() {
           [r.client_name, r.description].filter(Boolean).join(' — '),
           'รายรับ', 'รายรับ', detail,
           fmt(Number(r.amount)), '', fmt(Number(row.balance)),
-          status, paidDate, r.document_url ?? ''])
+          status, paidDate, r.document_url ?? '', '', '', '', ''])
 
       } else {
         const r = row.rec as ExpenseRecord
@@ -395,15 +611,15 @@ export default function FinanceTab() {
           r.description ?? '',
           'รายจ่าย', catMeta(r.category).label.replace(/^[^\s]+\s/,''),
           detail, '', fmt(Number(r.amount)), fmt(Number(row.balance)),
-          status, paidDate, r.document_url ?? ''])
+          status, paidDate, r.document_url ?? '', '', '', '', ''])
       }
     })
 
     // Summary row
     rows.push([])
-    rows.push(['', '', '', '', '', 'รวมรายรับ', fmt(totalIncome), '', '', '', '', ''])
-    rows.push(['', '', '', '', '', 'รวมรายจ่าย', '', fmt(totalExpense), '', '', '', ''])
-    rows.push(['', '', '', '', '', 'กำไร / ขาดทุน', fmt(Math.max(0, netProfit)), fmt(Math.max(0, -netProfit)), '', '', '', ''])
+    rows.push(['', '', '', '', '', 'รวมรายรับ', fmt(totalIncome), '', '', '', '', '', '', '', '', ''])
+    rows.push(['', '', '', '', '', 'รวมรายจ่าย', '', fmt(totalExpense), '', '', '', '', '', '', '', ''])
+    rows.push(['', '', '', '', '', 'กำไร / ขาดทุน', fmt(Math.max(0, netProfit)), fmt(Math.max(0, -netProfit)), '', '', '', '', '', '', '', ''])
 
     const csv = '﻿' + rows.map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n')
     const a = Object.assign(document.createElement('a'), {
@@ -437,10 +653,54 @@ export default function FinanceTab() {
             <p className="text-xs text-gray-400 hidden sm:block">Peepz Team by Haus of Mumu</p>
           </div>
           {view === 'month' && (
-            <div className="flex items-center gap-1 bg-white border border-orange-200 rounded-lg px-1">
-              <button onClick={() => navigate(-1)} className="p-1.5 hover:bg-orange-50 rounded text-orange-500"><ChevronLeft size={15} /></button>
-              <span className="text-sm font-semibold px-2 min-w-[110px] text-center text-orange-700">{MONTH_FULL[month-1]} {year+543}</span>
-              <button onClick={() => navigate(1)} className="p-1.5 hover:bg-orange-50 rounded text-orange-500"><ChevronRight size={15} /></button>
+            <div className="relative" ref={monthPickerRef}>
+              <div className="flex items-center gap-1 bg-white border border-orange-200 rounded-lg px-1">
+                <button onClick={() => navigate(-1)} className="p-1.5 hover:bg-orange-50 rounded text-orange-500"><ChevronLeft size={15} /></button>
+                <button
+                  onClick={() => { setPickerYear(year); setShowMonthPicker(p => !p) }}
+                  className="text-sm font-semibold px-2 min-w-[120px] text-center text-orange-700 hover:bg-orange-50 rounded py-1.5 transition"
+                >
+                  {MONTH_FULL[month-1]} {year+543}
+                </button>
+                <button onClick={() => navigate(1)} className="p-1.5 hover:bg-orange-50 rounded text-orange-500"><ChevronRight size={15} /></button>
+              </div>
+              {/* Month Picker Dropdown */}
+              {showMonthPicker && (
+                <div className="absolute top-full mt-1 left-1/2 -translate-x-1/2 z-50 bg-white border border-orange-200 rounded-xl shadow-lg p-3 w-64">
+                  {/* Year selector */}
+                  <div className="flex items-center justify-between mb-2">
+                    <button onClick={() => setPickerYear(y => y - 1)} className="p-1 hover:bg-orange-50 rounded text-orange-500"><ChevronLeft size={14}/></button>
+                    <span className="text-sm font-bold text-gray-700">{pickerYear + 543}</span>
+                    <button onClick={() => setPickerYear(y => y + 1)} className="p-1 hover:bg-orange-50 rounded text-orange-500"><ChevronRight size={14}/></button>
+                  </div>
+                  {/* Month grid */}
+                  <div className="grid grid-cols-4 gap-1">
+                    {MONTH_FULL.map((m, i) => {
+                      const isSelected = (i + 1) === month && pickerYear === year
+                      return (
+                        <button
+                          key={i}
+                          onClick={() => { setMonth(i + 1); setYear(pickerYear); setShowMonthPicker(false) }}
+                          className={`py-1.5 rounded-lg text-xs font-medium transition ${
+                            isSelected
+                              ? 'bg-orange-500 text-white'
+                              : 'hover:bg-orange-50 text-gray-600 hover:text-orange-700'
+                          }`}
+                        >
+                          {['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'][i]}
+                        </button>
+                      )
+                    })}
+                  </div>
+                  {/* Today shortcut */}
+                  <button
+                    onClick={() => { setMonth(now.getMonth()+1); setYear(now.getFullYear()); setShowMonthPicker(false) }}
+                    className="mt-2 w-full text-xs text-orange-600 hover:bg-orange-50 py-1 rounded-lg transition font-medium"
+                  >
+                    📅 เดือนปัจจุบัน
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -455,13 +715,21 @@ export default function FinanceTab() {
           </div>
           {view === 'month' && (
             <>
-              <button onClick={() => { setShowForm(showForm === 'income' ? null : 'income'); setFormError(null) }}
-                className="flex items-center gap-1 bg-emerald-500 text-white px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-emerald-600 shadow-sm">
-                <Plus size={13} /> รายรับ
-              </button>
-              <button onClick={() => { setShowForm(showForm === 'expense' ? null : 'expense'); setFormError(null) }}
-                className="flex items-center gap-1 bg-rose-500 text-white px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-rose-600 shadow-sm">
-                <Plus size={13} /> รายจ่าย
+              {!isReadOnly && (
+                <>
+                  <button onClick={() => { setShowForm(showForm === 'income' ? null : 'income'); setFormError(null) }}
+                    className="flex items-center gap-1 bg-emerald-500 text-white px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-emerald-600 shadow-sm">
+                    <Plus size={13} /> รายรับ
+                  </button>
+                  <button onClick={() => { setShowForm(showForm === 'expense' ? null : 'expense'); setFormError(null) }}
+                    className="flex items-center gap-1 bg-rose-500 text-white px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-rose-600 shadow-sm">
+                    <Plus size={13} /> รายจ่าย
+                  </button>
+                </>
+              )}
+              <button onClick={() => setBankImportOpen(true)}
+                className="flex items-center gap-1 border border-blue-300 text-blue-600 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-blue-50">
+                <Upload size={13} /> <span className="hidden sm:inline">เทียบ</span>ธนาคาร
               </button>
               <button onClick={exportCSV}
                 className="flex items-center gap-1 border border-gray-300 text-gray-600 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-gray-50">
@@ -486,15 +754,19 @@ export default function FinanceTab() {
       ) : (
         <>
           {/* Summary cards */}
-          <div className="grid grid-cols-3 sm:grid-cols-3 gap-2 sm:gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
             <div className="bg-white border border-emerald-200 rounded-xl p-3 sm:p-4 flex items-center gap-2 sm:gap-3">
               <div className="w-8 h-8 sm:w-10 sm:h-10 bg-emerald-100 rounded-xl flex items-center justify-center shrink-0">
                 <TrendingUp size={16} className="text-emerald-600" />
               </div>
               <div className="min-w-0">
-                <p className="text-xs text-gray-500 truncate">รายรับ</p>
+                <p className="text-xs text-gray-500 truncate">รายรับ (ทั้งเดือน)</p>
                 <p className="text-sm sm:text-xl font-bold text-emerald-600 truncate">{formatCurrency(totalIncome)}</p>
                 <p className="text-xs text-gray-400 hidden sm:block">{incomes.length} รายการ</p>
+                <div className="mt-1.5 pt-1.5 border-t border-emerald-50">
+                  <p className="text-[10px] text-emerald-500 truncate">✅ ณ วันนี้ {formatCurrency(actualIncome)}</p>
+                  <p className="text-xs text-gray-400 hidden sm:block">{actualIncomeCount} รายการรับแล้ว</p>
+                </div>
               </div>
             </div>
             <div className="bg-white border border-rose-200 rounded-xl p-3 sm:p-4 flex items-center gap-2 sm:gap-3">
@@ -502,9 +774,13 @@ export default function FinanceTab() {
                 <TrendingDown size={16} className="text-rose-600" />
               </div>
               <div className="min-w-0">
-                <p className="text-xs text-gray-500 truncate">รายจ่าย</p>
+                <p className="text-xs text-gray-500 truncate">รายจ่าย (ทั้งเดือน)</p>
                 <p className="text-sm sm:text-xl font-bold text-rose-600 truncate">{formatCurrency(totalExpense)}</p>
                 <p className="text-xs text-gray-400 hidden sm:block">{expenses.length + payslips.length} รายการ</p>
+                <div className="mt-1.5 pt-1.5 border-t border-rose-50">
+                  <p className="text-[10px] text-rose-500 truncate">✅ ณ วันนี้ {formatCurrency(actualExpense)}</p>
+                  <p className="text-xs text-gray-400 hidden sm:block">{actualExpenseCount} รายการจ่ายแล้ว</p>
+                </div>
               </div>
             </div>
             <div className={`bg-white rounded-xl p-3 sm:p-4 flex items-center gap-2 sm:gap-3 border ${netProfit >= 0 ? 'border-indigo-200' : 'border-gray-200'}`}>
@@ -512,12 +788,123 @@ export default function FinanceTab() {
                 <Wallet size={16} className={netProfit >= 0 ? 'text-indigo-600' : 'text-gray-500'} />
               </div>
               <div className="min-w-0">
-                <p className="text-xs text-gray-500 truncate">กำไร/ขาดทุน</p>
+                <p className="text-xs text-gray-500 truncate">กำไร/ขาดทุน (ทั้งเดือน)</p>
                 <p className={`text-sm sm:text-xl font-bold truncate ${netProfit >= 0 ? 'text-indigo-600' : 'text-red-500'}`}>{formatCurrency(netProfit)}</p>
                 <p className="text-xs text-gray-400 hidden sm:block">{netProfit >= 0 ? '✅ บวก' : '⚠️ ลบ'}</p>
+                <div className="mt-1.5 pt-1.5 border-t border-indigo-50">
+                  <p className={`text-[10px] truncate ${actualProfit >= 0 ? 'text-indigo-500' : 'text-red-400'}`}>✅ ณ วันนี้ {formatCurrency(actualProfit)}</p>
+                  <p className="text-xs text-gray-400 hidden sm:block">{actualProfit >= 0 ? 'บวก' : 'ลบ'} จากรายการที่เกิดขึ้นแล้ว</p>
+                </div>
+              </div>
+            </div>
+            <div className={`bg-white rounded-xl p-3 sm:p-4 flex items-center gap-2 sm:gap-3 border ${currentBalance >= 0 ? 'border-violet-200' : 'border-gray-200'}`}>
+              <div className={`w-8 h-8 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center shrink-0 ${currentBalance >= 0 ? 'bg-violet-100' : 'bg-gray-100'}`}>
+                <Wallet size={16} className={currentBalance >= 0 ? 'text-violet-600' : 'text-gray-500'} />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs text-gray-500 truncate">ยอดเงินคงเหลือ</p>
+                <p className={`text-sm sm:text-xl font-bold truncate ${currentBalance >= 0 ? 'text-violet-600' : 'text-red-500'}`}>{formatCurrency(currentBalance)}</p>
+                <p className="text-xs text-gray-400 hidden sm:block">ยกมา {formatCurrency(carryBalance)}</p>
+                <div className="mt-1.5 pt-1.5 border-t border-violet-50">
+                  <p className="text-[10px] text-violet-500 truncate">+ ณ วันนี้เดือนนี้ {formatCurrency(actualProfit)}</p>
+                </div>
               </div>
             </div>
           </div>
+
+          {/* WHT Tracker — compact inline strip */}
+          {(prevMonthWHT > 0 || currentMonthWHT > 0) && (
+            <div className="flex flex-wrap gap-2">
+              {prevMonthWHT > 0 && (
+                <div className={`flex items-center gap-2 rounded-full px-3 py-1.5 text-xs border ${prevWHTSubmitted ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
+                  {prevWHTSubmitted
+                    ? <><ShieldCheck size={12} /> WHT {MONTHS[prevMonth-1]} {formatCurrency(prevMonthWHT)} — นำส่งแล้ว</>
+                    : <><AlertTriangle size={12} /> WHT {MONTHS[prevMonth-1]} {formatCurrency(prevMonthWHT)} — ยังไม่ส่ง (ครบ 7 {MONTH_FULL[month-1]})
+                        {!isReadOnly && (
+                          <button onClick={() => {
+                            setExpenseForm({ category: 'tax', amount: prevMonthWHT.toFixed(2), description: `ภ.ง.ด.53 เดือน${MONTHS[prevMonth-1]} ${prevYear+543}`, note: '', document_url: '', transaction_date: todayISO() })
+                            setShowForm('expense')
+                          }} className="ml-1 underline font-semibold hover:no-underline">+ บันทึก</button>
+                        )}
+                      </>
+                  }
+                </div>
+              )}
+              {currentMonthWHT > 0 && (
+                <div className="flex items-center gap-2 rounded-full px-3 py-1.5 text-xs border bg-amber-50 border-amber-200 text-amber-700">
+                  🏛️ WHT {MONTHS[month-1]} {formatCurrency(currentMonthWHT)} — ส่งเดือนหน้า (7 {MONTH_FULL[nextMonth-1]})
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* AI Financial Analysis */}
+          <div>
+            <button
+              onClick={aiAnalysis && !aiLoading ? () => setAiOpen(o => !o) : runAiAnalysis}
+              disabled={aiLoading}
+              className="flex items-center gap-2 text-xs font-medium px-3 py-1.5 rounded-full border border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 disabled:opacity-60 transition-colors"
+            >
+              {aiLoading ? (
+                <><span className="animate-spin inline-block w-3 h-3 border border-indigo-400 border-t-transparent rounded-full" /> กำลังวิเคราะห์...</>
+              ) : aiAnalysis ? (
+                aiOpen ? '▲ ซ่อนผลวิเคราะห์' : '▼ ดูผลวิเคราะห์'
+              ) : (
+                '🤖 วิเคราะห์การเงิน AI'
+              )}
+            </button>
+            {aiOpen && aiAnalysis && (
+              <div className="mt-2 bg-indigo-50 border border-indigo-200 rounded-xl p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs font-semibold text-indigo-700">🤖 AI วิเคราะห์การเงิน — {MONTH_FULL[month-1]} {year + 543}</p>
+                  <button onClick={runAiAnalysis} disabled={aiLoading} className="text-[10px] text-indigo-500 hover:text-indigo-700 underline disabled:opacity-50">วิเคราะห์ใหม่</button>
+                </div>
+                <div className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{aiAnalysis}{aiLoading && <span className="animate-pulse">▌</span>}</div>
+              </div>
+            )}
+          </div>
+
+          {/* Duplicate expense warning */}
+          {dupWarning && (
+            <div className="bg-yellow-50 border border-yellow-300 rounded-xl p-4">
+              <div className="flex items-start gap-3">
+                <AlertTriangle size={18} className="text-yellow-600 mt-0.5 shrink-0" />
+                <div className="flex-1">
+                  <p className="font-semibold text-yellow-800 text-sm">พบรายการที่อาจซ้ำกัน</p>
+                  <p className="text-xs text-yellow-700 mt-0.5">มีรายการยอดและชื่อใกล้เคียงกันอยู่แล้วในเดือนนี้:</p>
+                  <div className="mt-2 space-y-1">
+                    {dupWarning.existing.map(e => (
+                      <div key={e.id} className="bg-white rounded-lg px-3 py-2 border border-yellow-200 text-xs flex items-center gap-3">
+                        <span className="font-medium text-gray-700">{e.description || '(ไม่มีชื่อ)'}</span>
+                        <span className="text-rose-600 font-semibold">{formatCurrency(Number(e.amount))}</span>
+                        {e.transaction_date && <span className="text-gray-400">{formatDateShort(e.transaction_date)}</span>}
+                        <span className={`ml-auto text-xs px-1.5 py-0.5 rounded-full ${e.is_paid ? 'bg-green-100 text-green-600' : 'bg-amber-50 text-amber-600'}`}>
+                          {e.is_paid ? 'จ่ายแล้ว' : 'รอจ่าย'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex gap-2 mt-3 flex-wrap">
+                    <button onClick={confirmDupExpense}
+                      className="text-xs bg-yellow-500 text-white px-3 py-1.5 rounded-lg hover:bg-yellow-600 font-medium">
+                      ✅ บันทึกต่อ (ตั้งใจเพิ่ม)
+                    </button>
+                    <button onClick={() => {
+                      setExpenseForm({ ...dupWarning.pending })
+                      setDupWarning(null)
+                      setShowForm('expense')
+                    }} className="text-xs border border-gray-300 px-3 py-1.5 rounded-lg hover:bg-gray-50">
+                      ✏️ แก้ไขรายการ
+                    </button>
+                    <button onClick={() => setDupWarning(null)}
+                      className="text-xs text-gray-400 hover:text-gray-600 px-2 py-1.5">
+                      ยกเลิก
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Add forms */}
           {showForm === 'income' && (
@@ -539,7 +926,7 @@ export default function FinanceTab() {
               </div>
               <ExpenseFormFields form={expenseForm} setForm={setExpenseForm} />
               {formError && <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">⚠️ {formError}</p>}
-              <button onClick={addExpense} className="bg-rose-500 text-white px-5 py-2 rounded-lg text-sm font-semibold hover:bg-rose-600">💾 บันทึกรายจ่าย</button>
+              <button onClick={() => addExpense()} className="bg-rose-500 text-white px-5 py-2 rounded-lg text-sm font-semibold hover:bg-rose-600">💾 บันทึกรายจ่าย</button>
             </div>
           )}
 
@@ -611,34 +998,82 @@ export default function FinanceTab() {
                             {dateStr ? formatDateShort(dateStr) : <span className="text-gray-300">—</span>}
                           </td>
                           <td className="px-4 py-2.5">
-                            <p className="font-medium text-gray-800 leading-tight">{p.employee?.name ?? p.guest_name ?? '—'}</p>
-                            <div className="flex flex-wrap gap-1 mt-1">
-                              {p.base_salary > 0 && (
-                                <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
-                                  เงินเดือน {formatCurrency(p.base_salary)}
-                                </span>
-                              )}
-                              {p.ot_amount > 0 && (
-                                <span className="text-xs px-2 py-0.5 rounded-full bg-orange-100 text-orange-700">
-                                  OT {formatCurrency(p.ot_amount)}
-                                </span>
-                              )}
-                              {p.incentive > 0 && (
-                                <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700">
-                                  Incentive {formatCurrency(p.incentive)}
-                                </span>
-                              )}
-                              {p.social_security > 0 && (
-                                <span className="text-xs px-2 py-0.5 rounded-full bg-red-50 text-red-500">
-                                  −ประกันสังคม {formatCurrency(p.social_security)}
-                                </span>
-                              )}
-                              {p.withholding_tax > 0 && (
-                                <span className="text-xs px-2 py-0.5 rounded-full bg-red-50 text-red-500">
-                                  −ภาษี {formatCurrency(p.withholding_tax)}
-                                </span>
-                              )}
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <p className="font-medium text-gray-800 leading-tight">{p.employee?.name ?? p.guest_name ?? '—'}</p>
+                              <UserBadge name={p.created_by} />
                             </div>
+                            {p.document_url && (
+                              <a href={p.document_url} target="_blank" rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 text-xs text-blue-500 hover:text-blue-700 hover:underline mt-0.5">
+                                📎 เอกสารประกอบ
+                              </a>
+                            )}
+                            {/* เอกสารถาวรของพนักงาน */}
+                            {(p.employee?.doc_id_card_url || p.employee?.doc_bank_book_url) && (
+                              <div className="flex gap-2 mt-0.5 flex-wrap">
+                                {p.employee?.doc_id_card_url && (
+                                  <a href={p.employee.doc_id_card_url} target="_blank" rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1 text-xs text-indigo-400 hover:text-indigo-600 hover:underline">
+                                    🪪 บัตรประชาชน
+                                  </a>
+                                )}
+                                {p.employee?.doc_bank_book_url && (
+                                  <a href={p.employee.doc_bank_book_url} target="_blank" rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1 text-xs text-indigo-400 hover:text-indigo-600 hover:underline">
+                                    🏦 Book Bank
+                                  </a>
+                                )}
+                              </div>
+                            )}
+                            {isFreelance ? (
+                              // Freelance: แสดง line_items breakdown
+                              <div className="mt-1 space-y-0.5">
+                                {p.project_name && (
+                                  <p className="text-xs text-amber-600 font-medium">📋 {p.project_name}</p>
+                                )}
+                                {(p.line_items && p.line_items.length > 0) ? (
+                                  p.line_items.filter(li => li.total > 0).map((li, i) => (
+                                    <p key={i} className="text-xs text-gray-500">
+                                      • {li.description}{li.quantity > 1 ? ` ×${li.quantity} ${li.unit}` : ''} = <span className="text-amber-600 font-medium">{formatCurrency(li.total)}</span>
+                                    </p>
+                                  ))
+                                ) : p.base_salary > 0 ? (
+                                  <p className="text-xs text-gray-500">• ค่าบริการ <span className="text-amber-600 font-medium">{formatCurrency(p.base_salary)}</span></p>
+                                ) : null}
+                                {p.withholding_tax > 0 && (
+                                  <p className="text-xs text-red-400">−ภาษีหัก ณ ที่จ่าย {formatCurrency(p.withholding_tax)}</p>
+                                )}
+                              </div>
+                            ) : (
+                              // พนักงานประจำ: badges เดิม
+                              <div className="flex flex-wrap gap-1 mt-1">
+                                {p.base_salary > 0 && (
+                                  <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
+                                    เงินเดือน {formatCurrency(p.base_salary)}
+                                  </span>
+                                )}
+                                {p.ot_amount > 0 && (
+                                  <span className="text-xs px-2 py-0.5 rounded-full bg-orange-100 text-orange-700">
+                                    OT {formatCurrency(p.ot_amount)}
+                                  </span>
+                                )}
+                                {p.incentive > 0 && (
+                                  <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700">
+                                    Incentive {p.incentive_note ? `(${p.incentive_note}) ` : ''}{formatCurrency(p.incentive)}
+                                  </span>
+                                )}
+                                {p.social_security > 0 && (
+                                  <span className="text-xs px-2 py-0.5 rounded-full bg-red-50 text-red-500">
+                                    −ประกันสังคม {formatCurrency(p.social_security)}
+                                  </span>
+                                )}
+                                {p.withholding_tax > 0 && (
+                                  <span className="text-xs px-2 py-0.5 rounded-full bg-red-50 text-red-500">
+                                    −ภาษี {formatCurrency(p.withholding_tax)}
+                                  </span>
+                                )}
+                              </div>
+                            )}
                           </td>
                           <td className="px-4 py-2.5 max-w-[7rem]">
                             <span className={`text-xs font-semibold px-2 py-0.5 rounded-full whitespace-nowrap inline-block truncate max-w-full ${badgeCls}`}>
@@ -647,13 +1082,13 @@ export default function FinanceTab() {
                             <p className="text-xs text-gray-300 mt-0.5 whitespace-nowrap">จากสลิป</p>
                           </td>
                           <td className="px-4 py-2.5 text-center">
-                            <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium whitespace-nowrap ${
+                            <button onClick={() => togglePaidPayslip(p)} className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium whitespace-nowrap cursor-pointer hover:opacity-75 transition-opacity ${
                               p.is_paid
                                 ? 'bg-green-100 text-green-700'
                                 : 'bg-amber-50 text-amber-600 border border-amber-200'
                             }`}>
                               {p.is_paid ? '✅ จ่ายแล้ว' : '⏳ รอจ่าย'}
-                            </span>
+                            </button>
                           </td>
                           <td className="px-4 py-2.5 text-right"></td>
                           <td className={`px-4 py-2.5 text-right font-semibold whitespace-nowrap ${amtColor}`}>
@@ -680,7 +1115,10 @@ export default function FinanceTab() {
                         <td className="px-4 py-2.5">
                           {irec && (
                             <div>
-                              {irec.client_name && <p className="font-medium text-gray-800 leading-tight">{irec.client_name}</p>}
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                {irec.client_name && <p className="font-medium text-gray-800 leading-tight">{irec.client_name}</p>}
+                                <UserBadge name={irec.created_by} />
+                              </div>
                               {irec.description && <p className="text-xs text-gray-500">{irec.description}</p>}
                               {irec.note && <p className="text-xs text-gray-400 italic">{irec.note}</p>}
                               {irec.document_url && (
@@ -698,7 +1136,10 @@ export default function FinanceTab() {
                           )}
                           {erec && (
                             <div>
-                              {erec.description && <p className="font-medium text-gray-800 leading-tight">{erec.description}</p>}
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                {erec.description && <p className="font-medium text-gray-800 leading-tight">{erec.description}</p>}
+                                <UserBadge name={erec.created_by} />
+                              </div>
                               {erec.note && <p className="text-xs text-gray-400 italic">{erec.note}</p>}
                               {erec.document_url && (
                                 <a href={erec.document_url} target="_blank" rel="noopener noreferrer"
@@ -721,24 +1162,46 @@ export default function FinanceTab() {
                         </td>
                         <td className="px-4 py-2.5 text-center">
                           {irec && (
-                            <button onClick={() => togglePaidIncome(irec)}
-                              className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full font-medium border transition whitespace-nowrap ${
-                                irec.is_paid
-                                  ? 'bg-green-100 text-green-700 border-green-200 hover:bg-green-200'
-                                  : 'bg-amber-50 text-amber-600 border-amber-200 hover:bg-amber-100'
-                              }`}>
-                              {irec.is_paid ? '✅ รับแล้ว' : '⏳ รอรับ'}
-                            </button>
+                            <div className="flex flex-col items-center gap-0.5">
+                              {isReadOnly ? (
+                                <span className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full font-medium border whitespace-nowrap ${irec.is_paid ? 'bg-green-100 text-green-700 border-green-200' : 'bg-amber-50 text-amber-600 border-amber-200'}`}>
+                                  {irec.is_paid ? '✅ รับแล้ว' : '⏳ รอรับ'}
+                                </span>
+                              ) : (
+                                <button onClick={() => togglePaidIncome(irec)}
+                                  className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full font-medium border transition whitespace-nowrap ${
+                                    irec.is_paid
+                                      ? 'bg-green-100 text-green-700 border-green-200 hover:bg-green-200'
+                                      : 'bg-amber-50 text-amber-600 border-amber-200 hover:bg-amber-100'
+                                  }`}>
+                                  {irec.is_paid ? '✅ รับแล้ว' : '⏳ รอรับ'}
+                                </button>
+                              )}
+                              {irec.is_paid && irec.paid_at && (
+                                <span className="text-[10px] text-gray-400">{formatDateShort(irec.paid_at)}</span>
+                              )}
+                            </div>
                           )}
                           {erec && (
-                            <button onClick={() => togglePaidExpense(erec)}
-                              className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full font-medium border transition whitespace-nowrap ${
-                                erec.is_paid
-                                  ? 'bg-green-100 text-green-700 border-green-200 hover:bg-green-200'
-                                  : 'bg-rose-50 text-rose-600 border-rose-200 hover:bg-rose-100'
-                              }`}>
-                              {erec.is_paid ? '✅ จ่ายแล้ว' : '⏳ รอจ่าย'}
-                            </button>
+                            <div className="flex flex-col items-center gap-0.5">
+                              {isReadOnly ? (
+                                <span className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full font-medium border whitespace-nowrap ${erec.is_paid ? 'bg-green-100 text-green-700 border-green-200' : 'bg-rose-50 text-rose-600 border-rose-200'}`}>
+                                  {erec.is_paid ? '✅ จ่ายแล้ว' : '⏳ รอจ่าย'}
+                                </span>
+                              ) : (
+                                <button onClick={() => togglePaidExpense(erec)}
+                                  className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full font-medium border transition whitespace-nowrap ${
+                                    erec.is_paid
+                                      ? 'bg-green-100 text-green-700 border-green-200 hover:bg-green-200'
+                                      : 'bg-rose-50 text-rose-600 border-rose-200 hover:bg-rose-100'
+                                  }`}>
+                                  {erec.is_paid ? '✅ จ่ายแล้ว' : '⏳ รอจ่าย'}
+                                </button>
+                              )}
+                              {erec.is_paid && erec.paid_at && (
+                                <span className="text-[10px] text-gray-400">{formatDateShort(erec.paid_at)}</span>
+                              )}
+                            </div>
                           )}
                         </td>
                         <td className="px-4 py-2.5 text-right font-semibold text-emerald-600 whitespace-nowrap">
@@ -751,12 +1214,14 @@ export default function FinanceTab() {
                           {formatCurrency(row.balance)}
                         </td>
                         <td className="px-2 py-2.5">
-                          <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition">
-                            <button onClick={() => isIncome ? startEditIncome(row.rec as IncomeRecord) : startEditExpense(row.rec as ExpenseRecord)}
-                              className="text-gray-400 hover:text-indigo-600 p-1"><Pencil size={12} /></button>
-                            <button onClick={() => isIncome ? deleteIncome(row.rec.id) : deleteExpense(row.rec.id)}
-                              className="text-gray-300 hover:text-red-500 p-1"><Trash2 size={12} /></button>
-                          </div>
+                          {!isReadOnly && (
+                            <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition">
+                              <button onClick={() => isIncome ? startEditIncome(row.rec as IncomeRecord) : startEditExpense(row.rec as ExpenseRecord)}
+                                className="text-gray-400 hover:text-indigo-600 p-1"><Pencil size={12} /></button>
+                              <button onClick={() => isIncome ? deleteIncome(row.rec.id) : deleteExpense(row.rec.id)}
+                                className="text-gray-300 hover:text-red-500 p-1"><Trash2 size={12} /></button>
+                            </div>
+                          )}
                         </td>
                       </tr>
                     )
@@ -803,8 +1268,189 @@ export default function FinanceTab() {
           </div>
         </>
       )}
+
+      {/* Bank Import Modal */}
+      {bankImportOpen && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-start justify-center pt-8 px-4" onClick={() => setBankImportOpen(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+              <div>
+                <h2 className="font-bold text-gray-800">🏦 เทียบรายการธนาคาร (K-BIZ)</h2>
+                <p className="text-xs text-gray-400 mt-0.5">Paste CSV จาก K-BIZ แล้วกด "วิเคราะห์" เพื่อดูรายการที่หายไปจากระบบ</p>
+              </div>
+              <button onClick={() => setBankImportOpen(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+            </div>
+            <div className="p-5 flex flex-col gap-4 overflow-y-auto">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1.5">วาง CSV จาก K-BIZ (Download → ไฟล์ CSV)</label>
+                <textarea
+                  value={bankImportText}
+                  onChange={e => setBankImportText(e.target.value)}
+                  placeholder="วางเนื้อหา CSV ที่นี่..."
+                  className="w-full h-32 border border-gray-300 rounded-xl px-3 py-2.5 text-xs font-mono resize-none focus:outline-none focus:ring-2 focus:ring-blue-300"
+                />
+              </div>
+              <button
+                onClick={() => {
+                  const txns = parseKBankCSV(bankImportText)
+                  const results = txns.map(txn => ({
+                    txn,
+                    matches: ledger.filter(row => {
+                      const rowAmt = row.kind === 'income' ? Number((row.rec as IncomeRecord).amount) :
+                                     row.kind === 'expense' ? Number((row.rec as ExpenseRecord).amount) :
+                                     Number((row.rec as PayslipRecord).net_pay)
+                      if (Math.abs(rowAmt - (txn.withdrawal > 0 ? txn.withdrawal : txn.deposit)) > 0.5) return false
+                      if (txn.withdrawal > 0 && row.kind === 'income') return false
+                      if (txn.deposit > 0 && row.kind !== 'income') return false
+                      return true
+                    }),
+                  }))
+                  setBankImportRows(results)
+                  setBankImportAnalyzed(true)
+                }}
+                className="self-start flex items-center gap-1.5 bg-blue-500 text-white px-4 py-2 rounded-xl text-sm font-semibold hover:bg-blue-600"
+              >
+                <Upload size={14} /> วิเคราะห์
+              </button>
+
+              {bankImportAnalyzed && bankImportRows.length === 0 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-800">
+                  <p className="font-semibold">ไม่พบรายการ</p>
+                  <p className="text-xs mt-1 text-amber-700">ระบบอ่านรูปแบบข้อมูลไม่ได้ ลองวิธีนี้:<br />ใน K-BIZ → ดาวน์โหลด Statement → เลือก CSV → เปิดไฟล์ด้วย Notepad/TextEdit แล้ว copy ข้อความทั้งหมดมาวาง</p>
+                </div>
+              )}
+              {bankImportRows.length > 0 && (
+                <div className="border border-gray-100 rounded-xl overflow-hidden">
+                  <div className="flex items-center justify-between px-4 py-2.5 bg-gray-50 border-b border-gray-100">
+                    <span className="text-xs font-semibold text-gray-600">{bankImportRows.length} รายการ</span>
+                    <div className="flex gap-3 text-xs">
+                      <span className="text-green-600 font-medium">✅ ตรงกัน: {bankImportRows.filter(r => r.matches.length > 0).length}</span>
+                      <span className="text-red-500 font-medium">❌ ไม่มีในระบบ: {bankImportRows.filter(r => r.matches.length === 0).length}</span>
+                    </div>
+                  </div>
+                  <div className="divide-y divide-gray-50 max-h-80 overflow-y-auto">
+                    {bankImportRows.map((r, i) => {
+                      const isExp = r.txn.withdrawal > 0
+                      const amt = isExp ? r.txn.withdrawal : r.txn.deposit
+                      const matched = r.matches.length > 0
+                      return (
+                        <div key={i} className={`flex items-start gap-3 px-4 py-2.5 ${matched ? 'bg-white' : 'bg-red-50'}`}>
+                          <div className={`mt-0.5 shrink-0 text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center ${matched ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-500'}`}>
+                            {matched ? '✓' : '!'}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-xs text-gray-400">{r.txn.date.slice(5).replace('-','/')}</span>
+                              <span className={`text-sm font-semibold ${isExp ? 'text-rose-600' : 'text-emerald-600'}`}>
+                                {isExp ? '-' : '+'}{formatCurrency(amt)}
+                              </span>
+                            </div>
+                            <p className="text-xs text-gray-500 truncate mt-0.5">{r.txn.detail || '—'}</p>
+                            {matched && (
+                              <p className="text-xs text-green-600 mt-0.5">
+                                ✅ {r.matches.map(m =>
+                                  m.kind === 'income' ? (m.rec as IncomeRecord).client_name || (m.rec as IncomeRecord).description :
+                                  m.kind === 'expense' ? (m.rec as ExpenseRecord).description :
+                                  payslipName(m.rec as PayslipRecord)
+                                ).join(', ')}
+                              </p>
+                            )}
+                            {!matched && (
+                              <p className="text-xs text-red-500 font-medium mt-0.5">⚠️ ไม่พบในระบบ — ต้องเพิ่มรายการ</p>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
+}
+
+// ─── KBank CSV Parser ─────────────────────────────────────────────────────────
+interface BankTxn { date: string; withdrawal: number; deposit: number; detail: string }
+
+function parseCSVLine(line: string): string[] {
+  const fields: string[] = []
+  let cur = '', inQ = false
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i]
+    if (c === '"') { if (inQ && line[i+1] === '"') { cur += '"'; i++ } else inQ = !inQ }
+    else if (c === ',' && !inQ) { fields.push(cur); cur = '' }
+    else cur += c
+  }
+  fields.push(cur)
+  return fields
+}
+
+function parseKBankCSV(text: string): BankTxn[] {
+  const rows: BankTxn[] = []
+  for (const rawLine of text.split('\n')) {
+    const line = rawLine.trim()
+    if (!line) continue
+
+    // Try comma-separated (CSV download) first, then tab, then multi-space
+    let cols: string[]
+    if (line.includes(',') && line.includes('"')) {
+      cols = parseCSVLine(line) // quoted CSV
+    } else if (line.includes('\t')) {
+      cols = line.split('\t').map(s => s.trim())
+    } else if (line.includes(',')) {
+      cols = parseCSVLine(line) // plain CSV
+    } else {
+      cols = line.split(/\s{2,}/).map(s => s.trim()) // web copy (multi-space)
+    }
+
+    // Find date (DD-MM-YY) — could be col[0] (web copy) or col[1] (CSV download)
+    let dateIdx = -1
+    let isoDate = ''
+    for (let i = 0; i < Math.min(cols.length, 3); i++) {
+      const c = (cols[i] || '').trim()
+      if (/^\d{2}-\d{2}-\d{2}$/.test(c)) {
+        dateIdx = i
+        const [dd, mm, yy] = c.split('-').map(Number)
+        isoDate = `20${String(yy).padStart(2,'0')}-${String(mm).padStart(2,'0')}-${String(dd).padStart(2,'0')}`
+        break
+      }
+    }
+    if (dateIdx < 0 || !isoDate) continue
+
+    // CSV download format: date at col[1], withdrawal at col[4], deposit at col[5], detail at col[12]
+    if (dateIdx === 1 && cols.length >= 7) {
+      const withdrawal = parseFloat((cols[4] || '').replace(/,/g, '')) || 0
+      const deposit = parseFloat((cols[5] || '').replace(/,/g, '')) || 0
+      if (withdrawal === 0 && deposit === 0) continue
+      const detail = (cols[12] || cols[7] || '').trim()
+      rows.push({ date: isoDate, withdrawal, deposit, detail })
+      continue
+    }
+
+    // Web copy format: date at col[0], cols = [date, time, description, amount, balance, channel?, detail?]
+    if (dateIdx === 0 && cols.length >= 4) {
+      const desc = (cols[2] || '').trim()
+      const rawAmt = (cols[3] || '').trim()
+      const hasNegative = rawAmt.startsWith('_') || rawAmt.startsWith('-')
+      const amt = parseFloat(rawAmt.replace(/^[_-]/, '').replace(/,/g, '')) || 0
+      if (amt === 0) continue
+
+      const detail = cols.slice(5).join(' ').trim() || (cols[6] || '').trim() || desc
+      // Determine direction from description keywords
+      const depositKW = /รับ|ฝาก|ดอกเบี้ย|เข้า|income/i
+      const withdrawKW = /โอนเงิน(?!เข้า)|ถอน|ภาษีหัก|transfer out/i
+      const isDeposit = depositKW.test(desc) && !withdrawKW.test(desc) && !hasNegative
+      const withdrawal = (!isDeposit || hasNegative) ? amt : 0
+      const deposit = isDeposit && !hasNegative ? amt : 0
+      if (withdrawal === 0 && deposit === 0) continue
+      rows.push({ date: isoDate, withdrawal, deposit, detail })
+    }
+  }
+  return rows
 }
 
 // ─── Form fields ──────────────────────────────────────────────────────────────
