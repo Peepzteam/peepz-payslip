@@ -886,13 +886,18 @@ export default function ControlBoardTab() {
 
               {/* ═══ SECTION: Team & Culture ════════════════════════════════ */}
               <SectionHeader id="team" label="🎉 Team & Culture Cost (จ่ายโดย KBIZ)" color="bg-pink-50 text-pink-800"/>
-              {!collapsed['team'] && ['team_food','team_outing','team_party','team_snack','team_birthday','team_welcome','team_activity'].map(cat=>(
-                <tr key={cat} className="hover:bg-gray-50/50">
-                  <RowLabel label={MANUAL_CATS[cat]} indent={1} sub/>
-                  {m12.map((_,i)=><Cell key={i+1} cat={cat} m={i+1} value={entryVal(cat,i+1)} color="text-pink-600"/>)}
-                  <td className="px-2 py-1.5 text-right text-xs font-bold text-pink-600 bg-gray-50 whitespace-nowrap">{formatCurrency(sum(entryRow(cat)))}</td>
-                </tr>
-              ))}
+              {!collapsed['team'] && ['team_food','team_outing','team_party','team_snack','team_birthday','team_welcome','team_activity'].map(cat=>{
+                const rowArr = m12.map((_,i) => resolveExpVal(cat, i+1))
+                return (
+                  <tr key={cat} className="hover:bg-gray-50/50">
+                    <RowLabel label={MANUAL_CATS[cat]} indent={1} sub synced/>
+                    {m12.map((_,i)=>(
+                      <Cell key={i+1} m={i+1} value={rowArr[i]} readOnly color="text-pink-600"/>
+                    ))}
+                    <td className="px-2 py-1.5 text-right text-xs font-bold text-pink-600 bg-gray-50 whitespace-nowrap">{formatCurrency(sum(rowArr))}</td>
+                  </tr>
+                )
+              })}
 
               {/* ═══ SECTION: Marketing & Sales ═════════════════════════════ */}
               <SectionHeader id="mkt" label="📢 Marketing & Sales Cost" color="bg-orange-50 text-orange-800"/>
