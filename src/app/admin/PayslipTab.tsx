@@ -482,6 +482,7 @@ export default function PayslipTab({ isReadOnly = false, incomingPayslipId, inco
       other_deduction_note: form.other_deduction_note,
       admin_note: form.admin_note,
       transfer_date: form.transfer_date || null,
+      due_date: form.due_date || null,
       document_url: form.document_url || null,
       payment_doc_url: form.payment_doc_url || null,
       wht_cert_email: form.wht_cert_email || null,
