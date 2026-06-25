@@ -1406,11 +1406,11 @@ function IncomeFormFields({ form, setForm, toggleSource }: {
     <div className="grid grid-cols-2 gap-3">
       <div>
         <label className="block text-xs font-medium text-gray-600 mb-1">วันที่ *</label>
-        <input type="date" value={form.transaction_date} onChange={e => setForm({...form, transaction_date: e.target.value})} className={cls} />
+        <input type="date" autoComplete="off" value={form.transaction_date} onChange={e => setForm({...form, transaction_date: e.target.value})} className={cls} />
       </div>
       <div>
         <label className="block text-xs font-medium text-gray-600 mb-1">ยอดเงิน (บาท) *</label>
-        <input type="number" value={form.amount} onChange={e => setForm({...form, amount: e.target.value})} placeholder="0.00" className={cls} />
+        <input type="number" autoComplete="off" value={form.amount} onChange={e => setForm({...form, amount: e.target.value})} placeholder="0.00" className={cls} />
       </div>
       <div className="col-span-2">
         <label className="block text-xs font-medium text-gray-600 mb-1">ประเภทรายรับ</label>
@@ -1425,19 +1425,19 @@ function IncomeFormFields({ form, setForm, toggleSource }: {
       </div>
       <div>
         <label className="block text-xs font-medium text-gray-600 mb-1">ชื่อลูกค้า / งาน</label>
-        <input value={form.client_name} onChange={e => setForm({...form, client_name: e.target.value})} placeholder="เช่น Brand XYZ" className={cls} />
+        <input autoComplete="off" value={form.client_name} onChange={e => setForm({...form, client_name: e.target.value})} placeholder="เช่น Brand XYZ" className={cls} />
       </div>
       <div>
         <label className="block text-xs font-medium text-gray-600 mb-1">รายละเอียด</label>
-        <input value={form.description} onChange={e => setForm({...form, description: e.target.value})} placeholder="เช่น Live สด 3 ชม." className={cls} />
+        <input autoComplete="off" value={form.description} onChange={e => setForm({...form, description: e.target.value})} placeholder="เช่น Live สด 3 ชม." className={cls} />
       </div>
       <div className="col-span-2">
         <label className="block text-xs font-medium text-gray-600 mb-1">หมายเหตุ</label>
-        <input value={form.note} onChange={e => setForm({...form, note: e.target.value})} placeholder="(ถ้ามี)" className={cls} />
+        <input autoComplete="off" value={form.note} onChange={e => setForm({...form, note: e.target.value})} placeholder="(ถ้ามี)" className={cls} />
       </div>
       <div className="col-span-2">
         <label className="block text-xs font-medium text-gray-600 mb-1">📎 ลิงก์เอกสารประกอบ</label>
-        <input type="url" value={form.document_url} onChange={e => setForm({...form, document_url: e.target.value})}
+        <input type="url" autoComplete="off" value={form.document_url} onChange={e => setForm({...form, document_url: e.target.value})}
           placeholder="https://drive.google.com/... หรือ Dropbox, OneDrive ฯลฯ" className={cls} />
         <p className="text-xs text-gray-400 mt-0.5">เช่น ใบแจ้งหนี้, Statement, เอกสารสัญญา</p>
       </div>
@@ -1454,7 +1454,7 @@ function ExpenseFormFields({ form, setForm }: {
     <div className="grid grid-cols-2 gap-3">
       <div>
         <label className="block text-xs font-medium text-gray-600 mb-1">วันที่ *</label>
-        <input type="date" value={form.transaction_date} onChange={e => setForm({...form, transaction_date: e.target.value})} className={cls} />
+        <input type="date" autoComplete="off" value={form.transaction_date} onChange={e => setForm({...form, transaction_date: e.target.value})} className={cls} />
       </div>
       <div>
         <label className="block text-xs font-medium text-gray-600 mb-1">หมวดหมู่ *</label>
@@ -1473,19 +1473,19 @@ function ExpenseFormFields({ form, setForm }: {
       </div>
       <div>
         <label className="block text-xs font-medium text-gray-600 mb-1">ยอดเงิน (บาท) *</label>
-        <input type="number" value={form.amount} onChange={e => setForm({...form, amount: e.target.value})} placeholder="0.00" className={cls} />
+        <input type="number" autoComplete="off" value={form.amount} onChange={e => setForm({...form, amount: e.target.value})} placeholder="0.00" className={cls} />
       </div>
       <div>
         <label className="block text-xs font-medium text-gray-600 mb-1">รายละเอียด</label>
-        <input value={form.description} onChange={e => setForm({...form, description: e.target.value})} placeholder="เช่น ค่าเช่าออฟฟิศ" className={cls} />
+        <input autoComplete="off" value={form.description} onChange={e => setForm({...form, description: e.target.value})} placeholder="เช่น ค่าเช่าออฟฟิศ" className={cls} />
       </div>
       <div className="col-span-2">
         <label className="block text-xs font-medium text-gray-600 mb-1">หมายเหตุ</label>
-        <input value={form.note} onChange={e => setForm({...form, note: e.target.value})} placeholder="(ถ้ามี)" className={cls} />
+        <input autoComplete="off" value={form.note} onChange={e => setForm({...form, note: e.target.value})} placeholder="(ถ้ามี)" className={cls} />
       </div>
       <div className="col-span-2">
         <label className="block text-xs font-medium text-gray-600 mb-1">📎 ลิงก์เอกสารประกอบ</label>
-        <input type="url" value={form.document_url} onChange={e => setForm({...form, document_url: e.target.value})}
+        <input type="url" autoComplete="off" value={form.document_url} onChange={e => setForm({...form, document_url: e.target.value})}
           placeholder="https://drive.google.com/... หรือ Dropbox, OneDrive ฯลฯ" className={cls} />
         <p className="text-xs text-gray-400 mt-0.5">เช่น ใบแจ้งหนี้, สำเนาบัตรประชาชน, Book Bank Freelance</p>
       </div>
