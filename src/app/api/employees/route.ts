@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 
-export async function GET() {
-  const { data, error } = await supabaseAdmin
-    .from('employees')
-    .select('*')
-    .eq('is_active', true)
-    .order('employee_code')
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url)
+  const all = searchParams.get('all') === 'true'
+  let query = supabaseAdmin.from('employees').select('*').order('employee_code')
+  if (!all) query = query.eq('is_active', true)
+  const { data, error } = await query
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json(data, {

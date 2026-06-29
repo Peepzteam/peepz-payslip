@@ -68,6 +68,7 @@ export default function HRTab({ isReadOnly = false }: { isReadOnly?: boolean }) 
   const [subTab, setSubTab] = useState<'dashboard' | 'attendance' | 'leave' | 'summary'>('dashboard')
 
   const [employees, setEmployees] = useState<Employee[]>([])
+  const [allEmployees, setAllEmployees] = useState<Employee[]>([])
   const [selectedEmpIds, setSelectedEmpIds] = useState<Set<string>>(new Set())
   const [records, setRecords] = useState<WorkRecord[]>([])
   const [prevRecords, setPrevRecords] = useState<WorkRecord[]>([])
@@ -116,8 +117,9 @@ export default function HRTab({ isReadOnly = false }: { isReadOnly?: boolean }) 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [empRes, recRes, prevRecRes, yearRecRes, payRes, prevPayRes, holRes, leaveRes] = await Promise.all([
+      const [empRes, allEmpRes, recRes, prevRecRes, yearRecRes, payRes, prevPayRes, holRes, leaveRes] = await Promise.all([
         fetch('/api/employees'),
+        fetch('/api/employees?all=true'),
         fetch(`/api/work-records?month=${month}&year=${year}`),
         fetch(`/api/work-records?month=${prevMonth}&year=${prevYear}`),
         fetch(`/api/work-records?year=${year}`),
@@ -127,11 +129,12 @@ export default function HRTab({ isReadOnly = false }: { isReadOnly?: boolean }) 
         fetch(`/api/leave-records?year=${year}`),
       ])
       const safeJson = async (r: Response) => { try { return await r.json() } catch { return [] } }
-      const [emps, recs, prevRecs, yearRecs, pays, prevPays, hols, leaves] = await Promise.all([
-        safeJson(empRes), safeJson(recRes), safeJson(prevRecRes), safeJson(yearRecRes), safeJson(payRes), safeJson(prevPayRes), safeJson(holRes), safeJson(leaveRes)
+      const [emps, allEmps, recs, prevRecs, yearRecs, pays, prevPays, hols, leaves] = await Promise.all([
+        safeJson(empRes), safeJson(allEmpRes), safeJson(recRes), safeJson(prevRecRes), safeJson(yearRecRes), safeJson(payRes), safeJson(prevPayRes), safeJson(holRes), safeJson(leaveRes)
       ])
       const activeEmps: Employee[] = Array.isArray(emps) ? emps.filter((e: Employee) => e.is_active) : []
       setEmployees(activeEmps)
+      setAllEmployees(Array.isArray(allEmps) ? allEmps : [])
       // Default: fulltime selected, freelance unselected
       setSelectedEmpIds(prev => {
         if (prev.size > 0) return prev
@@ -601,7 +604,7 @@ export default function HRTab({ isReadOnly = false }: { isReadOnly?: boolean }) 
             stats={stats} prevStats={prevStats} diff={diff}
             totalPayroll={totalPayroll} prevTotalPayroll={prevTotalPayroll}
             employees={shownEmployees} records={records} payslips={payslips}
-            holidays={holidays}
+            holidays={holidays} allEmployees={allEmployees}
           />
         ) : subTab === 'attendance' ? (
           <AttendanceGrid
@@ -875,15 +878,23 @@ export default function HRTab({ isReadOnly = false }: { isReadOnly?: boolean }) 
 }
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
-function DashboardView({ month, year, prevMonth, prevYear, stats, prevStats, diff, totalPayroll, prevTotalPayroll, employees, records, payslips, holidays }: {
+function DashboardView({ month, year, prevMonth, prevYear, stats, prevStats, diff, totalPayroll, prevTotalPayroll, employees, records, payslips, holidays, allEmployees }: {
   month: number; year: number; prevMonth: number; prevYear: number
   stats: { present: number; late: number; absent: number; leave: number; otHours: number }
   prevStats: { present: number; late: number; absent: number; leave: number; otHours: number }
   diff: (a: number, b: number) => { d: number; pct: number; up: boolean } | null
   totalPayroll: number; prevTotalPayroll: number
   employees: Employee[]; records: WorkRecord[]; payslips: PayslipSummary[]
-  holidays: CompanyHoliday[]
+  holidays: CompanyHoliday[]; allEmployees: Employee[]
 }) {
+  const monthStr = `${year}-${String(month).padStart(2,'0')}`
+  const prevMonthStr = `${prevYear}-${String(prevMonth).padStart(2,'0')}`
+  const newHires = allEmployees.filter(e => e.start_date?.startsWith(monthStr))
+  const prevNewHires = allEmployees.filter(e => e.start_date?.startsWith(prevMonthStr))
+  const resigned = allEmployees.filter(e => !e.is_active && e.start_date && e.start_date < monthStr)
+  const activeNow = allEmployees.filter(e => e.is_active && e.type === 'fulltime').length
+  const activePrev = allEmployees.filter(e => e.type === 'fulltime' && (!e.start_date || e.start_date <= prevMonthStr + '-31')).length
+
   const monthHolidays = holidays.filter(h => {
     const d = new Date(h.date + 'T00:00:00')
     return d.getMonth() + 1 === month && d.getFullYear() === year
@@ -950,6 +961,58 @@ function DashboardView({ month, year, prevMonth, prevYear, stats, prevStats, dif
               <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-indigo-500 inline-block" />เดือนนี้</span>
             </div>
           </div>
+        )}
+      </div>
+
+      {/* Headcount analysis */}
+      <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
+        <h3 className="font-semibold text-gray-800 mb-3 flex items-center gap-2 text-sm"><Users size={15} /> วิเคราะห์จำนวนพนักงาน</h3>
+        <div className="grid grid-cols-3 gap-3 mb-4">
+          <div className="text-center p-3 bg-indigo-50 rounded-xl">
+            <p className="text-2xl font-bold text-indigo-600">{activeNow}</p>
+            <p className="text-xs text-gray-500 mt-0.5">พนักงานปัจจุบัน</p>
+            {activePrev > 0 && activePrev !== activeNow && (
+              <p className={`text-xs mt-0.5 ${activeNow > activePrev ? 'text-green-600' : 'text-red-500'}`}>
+                {activeNow > activePrev ? `+${activeNow - activePrev}` : activeNow - activePrev} จากเดือนก่อน
+              </p>
+            )}
+          </div>
+          <div className="text-center p-3 bg-green-50 rounded-xl">
+            <p className="text-2xl font-bold text-green-600">{newHires.length}</p>
+            <p className="text-xs text-gray-500 mt-0.5">รับเข้าเดือนนี้</p>
+            {prevNewHires.length > 0 && <p className="text-xs text-gray-400 mt-0.5">เดือนก่อน {prevNewHires.length} คน</p>}
+          </div>
+          <div className="text-center p-3 bg-red-50 rounded-xl">
+            <p className="text-2xl font-bold text-red-500">{resigned.length}</p>
+            <p className="text-xs text-gray-500 mt-0.5">ไม่ active</p>
+          </div>
+        </div>
+        {newHires.length > 0 && (
+          <div className="mb-2">
+            <p className="text-xs font-semibold text-green-700 mb-1.5">✅ รับเข้าเดือนนี้</p>
+            <div className="flex flex-wrap gap-2">
+              {newHires.map(e => (
+                <span key={e.id} className="px-2.5 py-1 bg-green-100 text-green-800 rounded-full text-xs font-medium">
+                  {e.name} · {e.start_date}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+        {resigned.length > 0 && (
+          <div>
+            <p className="text-xs font-semibold text-red-500 mb-1.5">⚠️ พนักงานที่ไม่ active</p>
+            <div className="flex flex-wrap gap-2">
+              {resigned.map(e => (
+                <span key={e.id} className="px-2.5 py-1 bg-red-50 text-red-700 border border-red-200 rounded-full text-xs font-medium">
+                  {e.name} ({e.employee_code})
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+        {newHires.length === 0 && resigned.length === 0 && (
+          <p className="text-xs text-gray-400 text-center py-2">ไม่มีการเปลี่ยนแปลงพนักงานเดือนนี้</p>
         )}
       </div>
 
