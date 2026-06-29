@@ -163,14 +163,24 @@ export default function HRTab({ isReadOnly = false }: { isReadOnly?: boolean }) 
     return records.find(r => r.employee_id === empId && r.date === dateStr) || {}
   }
 
+  function calcOtFromTimes(ci: string, co: string): number {
+    if (!ci || !co) return 0
+    const [ih, im] = ci.split(':').map(Number)
+    const [oh, om] = co.split(':').map(Number)
+    const mins = (oh * 60 + om) - (ih * 60 + im)
+    return mins > 540 ? Math.round((mins - 540) / 60 * 2) / 2 : 0
+  }
+
   function openCell(empId: string, day: number) {
     const rec = getRecord(empId, day)
+    const ci = rec.check_in || ''
+    const co = rec.check_out || ''
     setEditCell({ empId, day })
     setCellForm({
       status: rec.status || '',
-      check_in: rec.check_in || '',
-      check_out: rec.check_out || '',
-      ot_hours: rec.ot_hours || 0,
+      check_in: ci,
+      check_out: co,
+      ot_hours: (ci && co) ? calcOtFromTimes(ci, co) : (rec.ot_hours || 0),
       ot_type: rec.ot_type || 'normal',
       note: rec.note || '',
     })
@@ -806,16 +816,7 @@ export default function HRTab({ isReadOnly = false }: { isReadOnly?: boolean }) 
                     <label className="block text-xs font-semibold text-gray-500 mb-1">เวลาเข้า</label>
                     <input type="time" value={cellForm.check_in || ''} onChange={e => {
                       const ci = e.target.value
-                      setCellForm(f => {
-                        const co = f.check_out || ''
-                        if (ci && co) {
-                          const [ih, im] = ci.split(':').map(Number)
-                          const [oh, om] = co.split(':').map(Number)
-                          const mins = (oh * 60 + om) - (ih * 60 + im)
-                          return { ...f, check_in: ci, ot_hours: mins > 540 ? Math.round((mins - 540) / 60 * 2) / 2 : 0 }
-                        }
-                        return { ...f, check_in: ci }
-                      })
+                      setCellForm(f => ({ ...f, check_in: ci, ot_hours: calcOtFromTimes(ci, f.check_out || '') }))
                     }}
                       className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
                   </div>
@@ -823,16 +824,7 @@ export default function HRTab({ isReadOnly = false }: { isReadOnly?: boolean }) 
                     <label className="block text-xs font-semibold text-gray-500 mb-1">เวลาออก</label>
                     <input type="time" value={cellForm.check_out || ''} onChange={e => {
                       const co = e.target.value
-                      setCellForm(f => {
-                        const ci = f.check_in || ''
-                        if (ci && co) {
-                          const [ih, im] = ci.split(':').map(Number)
-                          const [oh, om] = co.split(':').map(Number)
-                          const mins = (oh * 60 + om) - (ih * 60 + im)
-                          return { ...f, check_out: co, ot_hours: mins > 540 ? Math.round((mins - 540) / 60 * 2) / 2 : 0 }
-                        }
-                        return { ...f, check_out: co }
-                      })
+                      setCellForm(f => ({ ...f, check_out: co, ot_hours: calcOtFromTimes(f.check_in || '', co) }))
                     }}
                       className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
                   </div>
