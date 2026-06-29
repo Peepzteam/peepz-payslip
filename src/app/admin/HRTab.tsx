@@ -1061,6 +1061,14 @@ function DashboardView({ month, year, prevMonth, prevYear, stats, prevStats, dif
 }
 
 // ─── Attendance Grid ──────────────────────────────────────────────────────────
+function calcOtDisplay(ci: string | null | undefined, co: string | null | undefined): number {
+  if (!ci || !co) return 0
+  const [ih, im] = ci.split(':').map(Number)
+  const [oh, om] = co.split(':').map(Number)
+  const mins = (oh * 60 + om) - (ih * 60 + im)
+  return mins > 540 ? Math.round((mins - 540) / 60 * 2) / 2 : 0
+}
+
 function AttendanceGrid({ employees, days, year, month, getRecord, openCell, holidays, onExportEmployee }: {
   employees: Employee[]
   days: number[]
@@ -1153,7 +1161,8 @@ function AttendanceGrid({ employees, days, year, month, getRecord, openCell, hol
                 {days.map(d => {
                   const rec = getRecord(emp.id, d)
                   const meta = statusMeta(rec.status)
-                  const hasOt = Number(rec.ot_hours) > 0
+                  const displayOt = calcOtDisplay(rec.check_in, rec.check_out)
+                  const hasOt = displayOt > 0
                   const hasTime = rec.check_in || rec.check_out
                   const isHolDay = holidayMap.has(d)
                   const isBirthday = emp.type === 'fulltime' && !!emp.birth_date && (() => {
@@ -1183,7 +1192,7 @@ function AttendanceGrid({ employees, days, year, month, getRecord, openCell, hol
                           </div>
                         )}
                         {hasOt && (
-                          <span className="text-indigo-500 font-bold" style={{fontSize:'9px'}}>OT {rec.ot_hours}h</span>
+                          <span className="text-indigo-500 font-bold" style={{fontSize:'9px'}}>OT {displayOt}h</span>
                         )}
                       </div>
                     </td>
