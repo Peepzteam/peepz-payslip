@@ -390,7 +390,7 @@ export default function HRTab({ isReadOnly = false }: { isReadOnly?: boolean }) 
       late: recs.filter(r => r.status === 'late').length,
       absent: recs.filter(r => r.status === 'absent').length,
       leave: recs.filter(r => r.status?.startsWith('leave_')).length,
-      otHours: recs.reduce((s, r) => s + (Number(r.ot_hours) || 0), 0),
+      otHours: recs.reduce((s, r) => s + calcOtDisplay(r.check_in, r.check_out), 0),
     }
   }
   const stats = calcStats(records)
@@ -910,7 +910,7 @@ function DashboardView({ month, year, prevMonth, prevYear, stats, prevStats, dif
       late: r.filter(x => x.status === 'late').length,
       absent: r.filter(x => x.status === 'absent').length,
       leave: r.filter(x => x.status?.startsWith('leave_')).length,
-      otHours: r.reduce((s, x) => s + (Number(x.ot_hours) || 0), 0),
+      otHours: r.reduce((s, x) => s + calcOtDisplay(x.check_in, x.check_out), 0),
     }
   }
 
@@ -1413,7 +1413,7 @@ function YearlySummaryView({ employees, yearRecords, leaveRecords, year }: {
     const recs = yearRecords.filter(r => r.employee_id === emp.id)
     const late = recs.filter(r => r.status === 'late').length
     const absent = recs.filter(r => r.status === 'absent').length
-    const otHours = recs.reduce((s, r) => s + (Number(r.ot_hours) || 0), 0)
+    const otHours = recs.reduce((s, r) => s + calcOtDisplay(r.check_in, r.check_out), 0)
 
     const empLeaves = leaveRecords.filter(l => l.employee_id === emp.id && l.year === year)
     const usedSick = empLeaves.filter(l => l.leave_type === 'sick').reduce((s, l) => s + l.days, 0)
