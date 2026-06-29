@@ -1143,7 +1143,7 @@ function AttendanceGrid({ employees, days, year, month, getRecord, openCell, hol
             const empRecs = days.map(d => getRecord(emp.id, d))
             const presentCount = empRecs.filter(r => r.status === 'present' || r.status === 'late').length
             const absentLeave = empRecs.filter(r => r.status === 'absent' || r.status?.startsWith('leave_')).length
-            const otTotal = empRecs.reduce((s, r) => s + (Number(r.ot_hours) || 0), 0)
+            const otTotal = empRecs.reduce((s, r) => s + calcOtDisplay(r.check_in, r.check_out), 0)
             return (
               <tr key={emp.id} className={ei % 2 === 0 ? 'bg-white' : 'bg-gray-50/40'}>
                 <td className={`sticky left-0 z-10 px-4 py-3 border-r border-gray-200 ${ei % 2 === 0 ? 'bg-white' : 'bg-gray-50/60'}`}>
