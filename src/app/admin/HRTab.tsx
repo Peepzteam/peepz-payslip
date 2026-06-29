@@ -804,12 +804,36 @@ export default function HRTab({ isReadOnly = false }: { isReadOnly?: boolean }) 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-semibold text-gray-500 mb-1">เวลาเข้า</label>
-                    <input type="time" value={cellForm.check_in || ''} onChange={e => setCellForm(f => ({ ...f, check_in: e.target.value }))}
+                    <input type="time" value={cellForm.check_in || ''} onChange={e => {
+                      const ci = e.target.value
+                      setCellForm(f => {
+                        const co = f.check_out || ''
+                        if (ci && co) {
+                          const [ih, im] = ci.split(':').map(Number)
+                          const [oh, om] = co.split(':').map(Number)
+                          const mins = (oh * 60 + om) - (ih * 60 + im)
+                          return { ...f, check_in: ci, ot_hours: mins > 540 ? Math.round((mins - 540) / 60 * 2) / 2 : 0 }
+                        }
+                        return { ...f, check_in: ci }
+                      })
+                    }}
                       className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-gray-500 mb-1">เวลาออก</label>
-                    <input type="time" value={cellForm.check_out || ''} onChange={e => setCellForm(f => ({ ...f, check_out: e.target.value }))}
+                    <input type="time" value={cellForm.check_out || ''} onChange={e => {
+                      const co = e.target.value
+                      setCellForm(f => {
+                        const ci = f.check_in || ''
+                        if (ci && co) {
+                          const [ih, im] = ci.split(':').map(Number)
+                          const [oh, om] = co.split(':').map(Number)
+                          const mins = (oh * 60 + om) - (ih * 60 + im)
+                          return { ...f, check_out: co, ot_hours: mins > 540 ? Math.round((mins - 540) / 60 * 2) / 2 : 0 }
+                        }
+                        return { ...f, check_out: co }
+                      })
+                    }}
                       className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
                   </div>
                 </div>

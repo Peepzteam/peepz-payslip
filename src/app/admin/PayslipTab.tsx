@@ -50,6 +50,8 @@ export default function PayslipTab({ isReadOnly = false, incomingPayslipId, inco
   const [guestName, setGuestName] = useState('')
   const [guestEmail, setGuestEmail] = useState('')
   const [guestType, setGuestType] = useState<'fulltime' | 'freelance'>('freelance')
+  const [savingFreelancer, setSavingFreelancer] = useState(false)
+  const [savedFreelancerMsg, setSavedFreelancerMsg] = useState<string | null>(null)
 
   const [form, setForm] = useState({
     employee_id: '',
@@ -519,6 +521,25 @@ export default function PayslipTab({ isReadOnly = false, incomingPayslipId, inco
     fetch(`/api/payslips?month=${filterMonth}&year=${filterYear}`)
       .then((r) => r.json()).then(setPayslips)
     if (fileRef.current) fileRef.current.value = ''
+  }
+
+  async function saveFreelancerToEmployees() {
+    if (!guestName.trim()) return
+    const alreadyExists = employees.some(e => e.name === guestName.trim() || (guestEmail && e.email === guestEmail.trim()))
+    if (alreadyExists) { setSavedFreelancerMsg('มีชื่อหรืออีเมลนี้ในระบบแล้ว'); return }
+    setSavingFreelancer(true)
+    setSavedFreelancerMsg(null)
+    try {
+      const res = await fetch('/api/employees', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: guestName.trim(), email: guestEmail.trim() || null, type: 'freelance', is_active: true, is_owner: false }),
+      })
+      if (!res.ok) { const e = await res.json(); setSavedFreelancerMsg('บันทึกไม่สำเร็จ: ' + (e.error || res.status)); return }
+      const newEmp = await res.json()
+      setEmployees(prev => [...prev, newEmp])
+      setSavedFreelancerMsg('✅ บันทึกแล้ว! ครั้งถัดไปเลือกจาก dropdown ได้เลย')
+    } catch { setSavedFreelancerMsg('เกิดข้อผิดพลาด') } finally { setSavingFreelancer(false) }
   }
 
   function downloadTemplate() {
@@ -1235,6 +1256,17 @@ export default function PayslipTab({ isReadOnly = false, incomingPayslipId, inco
                       <option value="fulltime">พนักงานประจำ</option>
                     </select>
                   </div>
+                  {guestMode && guestType === 'freelance' && guestName.trim() && !editingPayslip && (
+                    <div className="col-span-3">
+                      <button type="button" onClick={saveFreelancerToEmployees} disabled={savingFreelancer}
+                        className="text-sm px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 rounded-lg transition disabled:opacity-50">
+                        {savingFreelancer ? 'กำลังบันทึก...' : '💾 บันทึก Freelancer นี้ไว้ในระบบ'}
+                      </button>
+                      {savedFreelancerMsg && (
+                        <span className={`ml-2 text-xs ${savedFreelancerMsg.startsWith('✅') ? 'text-green-600' : 'text-red-500'}`}>{savedFreelancerMsg}</span>
+                      )}
+                    </div>
+                  )}
                 </>
               ) : (
                 <div className="col-span-3 md:col-span-1">
