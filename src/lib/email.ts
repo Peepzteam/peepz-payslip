@@ -45,7 +45,7 @@ function buildPayslipEmailHtml(payslip: Payslip): string {
     <body style="font-family: 'Sarabun', Arial, sans-serif; background:#f5f5f5; margin:0; padding:20px;">
       <div style="max-width:600px; margin:0 auto; background:white; border-radius:12px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,0.1)">
         <div style="background:#4f46e5; color:white; padding:24px 32px;">
-          <h1 style="margin:0; font-size:22px">สลิปเงินเดือน / ใบจ่ายค่าจ้าง</h1>
+          <h1 style="margin:0; font-size:22px">${isFreelance ? 'ใบจ่ายค่าจ้าง / ค่าบริการ' : 'สลิปเงินเดือน'}</h1>
           <p style="margin:8px 0 0; opacity:0.85">${period}</p>
         </div>
         <div style="padding:24px 32px;">
@@ -105,12 +105,14 @@ export async function sendPayslipEmail(payslip: Payslip) {
 
   const period = formatPeriod(payslip.period_month, payslip.period_year)
   const transporter = createTransporter()
+  const isFreelance = payslip.employee ? payslip.employee.type === 'freelance' : payslip.guest_type === 'freelance'
+  const subjectLabel = isFreelance ? 'ใบจ่ายค่าจ้าง/ค่าบริการ' : 'สลิปเงินเดือน'
 
   const result = await transporter.sendMail({
     from: `"Payslip System" <${process.env.BREVO_SENDER_EMAIL}>`,
     to: toEmail,
     cc: process.env.ADMIN_EMAIL!,
-    subject: `สลิปเงินเดือน ${period} — ${toName}`,
+    subject: `${subjectLabel} ${period} — ${toName}`,
     html: buildPayslipEmailHtml(payslip),
   })
 
