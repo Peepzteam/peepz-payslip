@@ -126,6 +126,8 @@ export async function sendTransferConfirmationEmail(payslip: Payslip) {
   const dateStr = payslip.transfer_date
     ? new Date(payslip.transfer_date).toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })
     : new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })
+  const isFreelance = payslip.employee ? payslip.employee.type === 'freelance' : payslip.guest_type === 'freelance'
+  const transferText = isFreelance ? 'บริษัทได้ทำการโอนเงินค่าจ้างค่าบริการให้แล้ว' : 'บริษัทได้ทำการโอนเงินเดือนให้แล้ว'
 
   await transporter.sendMail({
     from: `"Payslip System" <${process.env.BREVO_SENDER_EMAIL}>`,
@@ -144,7 +146,7 @@ export async function sendTransferConfirmationEmail(payslip: Payslip) {
           </div>
           <div style="padding:32px; text-align:center">
             <p style="color:#666; margin:0 0 8px">เรียน คุณ${toName}</p>
-            <p style="color:#374151; margin:0 0 24px">บริษัทได้ทำการโอนเงินเดือนให้แล้ว</p>
+            <p style="color:#374151; margin:0 0 24px">${transferText}</p>
             <div style="background:#f0fdf4; border:2px solid #86efac; border-radius:12px; padding:20px; margin:0 0 24px">
               <div style="color:#666; font-size:14px; margin-bottom:4px">ยอดที่ได้รับ</div>
               <div style="font-size:36px; font-weight:bold; color:#15803d">${formatCurrency(payslip.net_pay)}</div>
