@@ -9,13 +9,7 @@
 [[plugins]]
   package = "@netlify/plugin-nextjs"
 
-# Cache API routes ที่ข้อมูลไม่เปลี่ยนบ่อย
 [[headers]]
-  for = "/api/employees"
+  for = "/api/*"
   [headers.values]
-    Cache-Control = "no-store"
-
-[[headers]]
-  for = "/api/holidays"
-  [headers.values]
-    Cache-Control = "no-store"
+    Cache-Control = "no-store, no-cache, must-revalidate"

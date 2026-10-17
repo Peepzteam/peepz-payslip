@@ -170,7 +170,8 @@ export default function HRTab({ isReadOnly = false }: { isReadOnly?: boolean }) 
     if (!ci || !co) return 0
     const [ih, im] = ci.split(':').map(Number)
     const [oh, om] = co.split(':').map(Number)
-    const mins = (oh * 60 + om) - (ih * 60 + im)
+    let mins = (oh * 60 + om) - (ih * 60 + im)
+    if (mins <= 0) mins += 1440 // กะข้ามเที่ยงคืน เช่น 13:00–00:00
     return mins > 540 ? Math.round((mins - 540) / 60 * 2) / 2 : 0
   }
 
@@ -1128,7 +1129,8 @@ function calcOtDisplay(ci: string | null | undefined, co: string | null | undefi
   if (!ci || !co) return 0
   const [ih, im] = ci.split(':').map(Number)
   const [oh, om] = co.split(':').map(Number)
-  const mins = (oh * 60 + om) - (ih * 60 + im)
+  let mins = (oh * 60 + om) - (ih * 60 + im)
+  if (mins <= 0) mins += 1440 // กะข้ามเที่ยงคืน เช่น 13:00–00:00
   return mins > 540 ? Math.round((mins - 540) / 60 * 2) / 2 : 0
 }
 
